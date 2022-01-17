@@ -295,8 +295,11 @@ class Test(TestCase):
             )
 
     def test_admin_resync_button(self):
-
-        resync_html = '<a href="' + reverse('admin:dkron_job_resync') + '"><button class="btn btn-primary-outline btn-round ml-1"><i class="fas fa-sync mr-1"></i>Resync jobs</button></a>'
+        resync_html = (
+            '<a href="'
+            + reverse('admin:dkron_job_resync')
+            + '" class="override-change_list_object_tools change-list-object-tools-item">Resync jobs</a>'
+        )
         self.user.is_staff = True
         self.user.save()
         self._login()
@@ -320,8 +323,10 @@ class Test(TestCase):
                 ('job3', 'd', 'failed deletion'),
                 ('job5', 'u', 'failed update'),
             ]
-            r = self.client.get(reverse('admin:dkron_job_resync') + '?_changelist_filters=enabled__exact%3d1', follow=True)
-            self.assertRedirects(r, reverse('admin:dkron_job_changelist') +'?enabled__exact=1')  # preserved filters
+            r = self.client.get(
+                reverse('admin:dkron_job_resync') + '?_changelist_filters=enabled__exact%3d1', follow=True
+            )
+            self.assertRedirects(r, reverse('admin:dkron_job_changelist') + '?enabled__exact=1')  # preserved filters
             # Temporary
             self.assertContains(
                 r,

@@ -35,7 +35,7 @@ class Command(LogBaseCommand):
         if not os.path.isfile(exe_path):
             os.makedirs(bin_dir, exist_ok=True)
             dl_url = settings.DKRON_DOWNLOAD_URL_TEMPLATE.format(
-                version=settings.DKRON_VERSION, 
+                version=settings.DKRON_VERSION,
                 system=system,
             )
             tarball = f'{exe_path}.tar.gz'
