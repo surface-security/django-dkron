@@ -3,7 +3,7 @@ style:
 	black --target-version=py36 \
 	      --line-length=120 \
 		  --skip-string-normalization \
-		  notifications testapp setup.py
+		  dkron testapp setup.py
 
 .PHONY: style_check
 style_check:
@@ -11,7 +11,7 @@ style_check:
 	      --line-length=120 \
 		  --skip-string-normalization \
 		  --check \
-		  notifications testapp setup.py
+		  dkron testapp setup.py
 
 test:
 	testapp/manage.py test $${TEST_ARGS:-tests}

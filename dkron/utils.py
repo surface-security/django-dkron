@@ -167,7 +167,6 @@ try:
     def __run_async(command, *args, **kwargs) -> str:
         return call_command(command, *args, **kwargs)
 
-
 except ImportError:
 
     def __run_async(command, *args, **kwargs):
