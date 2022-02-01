@@ -75,6 +75,9 @@ def proxy(request, path=None):
     }
     url = settings.DKRON_URL + (path or '')
 
+    if settings.DKRON_API_AUTH:
+        headers['Authorization'] = f'Basic {settings.DKRON_API_AUTH}'
+
     response = requests.request(
         request.method,
         url,
