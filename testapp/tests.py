@@ -44,7 +44,7 @@ class Test(TestCase):
         self.assertEqual(settings.DKRON_URL, None)
 
     def test_auth(self):
-        r = self.client.get('/dkron/auth/')
+        r = self.client.get(reverse('dkron:auth'))
         self.assertEqual(r.status_code, 401)
 
         self._login()

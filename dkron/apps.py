@@ -1,3 +1,4 @@
+from django.shortcuts import reverse
 from django.apps import AppConfig
 from django.conf import settings
 
@@ -5,7 +6,7 @@ APP_SETTINGS = dict(
     URL=None,
     PATH=None,
     BIN_DIR=None,
-    VERSION='3.1.8',
+    VERSION='3.1.10',
     DOWNLOAD_URL_TEMPLATE='https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_amd64.tar.gz',
     WEB_PORT=None,
     SERVER=False,
@@ -27,5 +28,9 @@ class DkronConfig(AppConfig):
     def ready(self):
         for k, v in APP_SETTINGS.items():
             _k = 'DKRON_%s' % k
-            if not hasattr(settings, _k):
-                setattr(settings, _k, v)
+            if hasattr(settings, _k):
+                continue
+            if (k, v) == ('PATH', None):
+                # special one to default to reverse url
+                v = reverse('dkron:proxy')
+            setattr(settings, _k, v)
