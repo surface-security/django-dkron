@@ -2,6 +2,9 @@
 
 Manage and run jobs in Dkron from your django project
 
+## Authentication
+
+
 ## ToDo
 
 * Make README useful!

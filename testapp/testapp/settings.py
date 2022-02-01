@@ -131,4 +131,4 @@ DKRON_SERVER = True
 # as defined in nginx proxypass location + dashboard to avoid redirect such as:
 # DKRON_PATH = '/dkron/ui/ui/'
 # for local dev, adding full URL (directly into dkron) to avoid setting up nginx
-DKRON_PATH = 'http://localhost:8888/ui/'
+# DKRON_PATH = 'http://localhost:8888/ui/'
