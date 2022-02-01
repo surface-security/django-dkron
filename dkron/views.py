@@ -129,4 +129,6 @@ def _fix_location_header(path, location):
     elif location.startswith('/'):
         return base + location[1:]
     else:
-        return base + (path or '') + '/' + location
+        # this is not meant to cover redirects to "outside" dkron
+        # so everything else is caught here
+        return base + (path or '') + location

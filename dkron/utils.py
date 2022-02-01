@@ -170,7 +170,7 @@ try:
 except ImportError:
 
     def __run_async(command, *args, **kwargs):
-        raise Exception('missing after_response app')
+        raise DkronException('dkron is down and after_response is not installed')
 
 
 def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:

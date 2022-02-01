@@ -130,5 +130,3 @@ DKRON_SERVER = True
 # DKRON_PATH is meant to be setup in an nginx location before the main app, so it can re-use app authentication (and authz) to access dkron (which has no authentication)
 # as defined in nginx proxypass location + dashboard to avoid redirect such as:
 # DKRON_PATH = '/dkron/ui/ui/'
-# for local dev, adding full URL (directly into dkron) to avoid setting up nginx
-# DKRON_PATH = 'http://localhost:8888/ui/'
