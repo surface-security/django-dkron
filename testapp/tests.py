@@ -41,29 +41,29 @@ class Test(TestCase):
         self.assertEqual(DkronConfig.name, 'dkron')
         self.assertEqual(apps.get_app_config('dkron').name, 'dkron')
         apps.get_app_config('dkron').ready()
-        self.assertEqual(settings.DKRON_URL, None)
+        self.assertEqual(settings.DKRON_URL, 'http://localhost:8888')
 
     def test_auth(self):
         r = self.client.get(reverse('dkron:auth'))
         self.assertEqual(r.status_code, 401)
 
         self._login()
-        r = self.client.get('/dkron/auth/')
+        r = self.client.get(reverse('dkron:auth'))
         self.assertEqual(r.status_code, 403)
 
         self.user.is_superuser = True
         self.user.save()
-        r = self.client.get('/dkron/auth/')
+        r = self.client.get(reverse('dkron:auth'))
         self.assertEqual(r.status_code, 200)
 
         self.user.is_superuser = False
         self.user.is_staff = True
         self.user.save()
-        r = self.client.get('/dkron/auth/')
+        r = self.client.get(reverse('dkron:auth'))
         self.assertEqual(r.status_code, 403)
 
         self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
-        r = self.client.get('/dkron/auth/')
+        r = self.client.get(reverse('dkron:auth'))
         self.assertEqual(r.status_code, 200)
 
     def test_resync_command(self):
@@ -500,3 +500,53 @@ class Test(TestCase):
             management.call_command('run_dkron', stdout=out, stderr=err)
 
         exec_mock.assert_called_once_with(exe_name, [exe_name, 'agent', '--tag', 'label=testapp'])
+
+    @mock.patch('requests.request')
+    def test_proxy_auth(self, mp1):
+        self.user.is_superuser = True
+        self.user.save()
+        r = self.client.get(reverse('dkron:proxy'))
+        self.assertEqual(302, r.status_code)
+        
+        mp1.return_value = mock.MagicMock(content='', status_code=202)
+        self._login()
+        r = self.client.get(reverse('dkron:proxy'))
+        self.assertEqual(202, r.status_code)
+
+        self.user.is_superuser = False
+        self.user.is_staff = True
+        self.user.save()
+        r = self.client.get(reverse('dkron:proxy'))
+        self.assertEqual(302, r.status_code)
+
+        self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
+        r = self.client.get(reverse('dkron:proxy'))
+        self.assertEqual(202, r.status_code)
+    
+    @mock.patch('requests.request')
+    def test_proxy_view(self, mp1):
+        self.user.is_superuser = True
+        self.user.save()
+        self._login()
+        
+        mp1.return_value = mock.MagicMock(content='raw content', status_code=202)
+        r = self.client.get(reverse('dkron:proxy'))
+        self.assertEqual(202, r.status_code)
+        self.assertEqual(b'raw content', r.content)
+
+        mp1.return_value = mock.MagicMock(content='raw content', status_code=302, headers={'Location': 'whatever', 'X-Custom': 'untouched'})
+        r = self.client.get(reverse('dkron:proxy'))
+        self.assertEqual(302, r.status_code)
+        self.assertEqual(b'raw content', r.content)
+        # relative path appended
+        self.assertEqual(reverse('dkron:proxy') + 'whatever', r.headers['location'])
+        # non-specific header remains untouched
+        self.assertEqual('untouched', r.headers['x-custom'])
+
+        mp1.return_value = mock.MagicMock(content='', status_code=302, headers={'Location': '/whatever', 'Content-Encoding': 'invalid'})
+        r = self.client.get(reverse('dkron:proxy'))
+        self.assertEqual(302, r.status_code)
+        # leading / is trimmed
+        self.assertEqual(reverse('dkron:proxy') + 'whatever', r.headers['location'])
+        # some headers from upstream are dropped
+        self.assertIsNone(r.headers.get('Content-Encoding'))
