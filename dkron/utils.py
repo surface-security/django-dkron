@@ -117,7 +117,8 @@ def resync_jobs() -> Iterator[tuple[str, Literal["u", "d"], Optional[str]]]:
     previous_jobs = {y['name']: y for y in r.json()}
     if settings.DKRON_JOB_LABEL:
         previous_jobs = {
-            y['name']: y for y in previous_jobs.values()
+            y['name']: y
+            for y in previous_jobs.values()
             if settings.DKRON_JOB_LABEL == y.get('tags', {}).get('label', '')
         }
 

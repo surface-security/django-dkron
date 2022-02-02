@@ -194,11 +194,7 @@ class Test(TestCase):
         mp1.return_value = mock.MagicMock(status_code=200, json=lambda: jobs)
         it = utils.resync_jobs()
 
-        with mock.patch(
-            'dkron.utils.sync_job'
-        ) as mp2, mock.patch(
-            'dkron.utils.delete_job'
-        ) as mp3:
+        with mock.patch('dkron.utils.sync_job') as mp2, mock.patch('dkron.utils.delete_job') as mp3:
             el = next(it)
             mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
             self.assertEqual(('job1', 'u', None), el)
@@ -513,7 +509,7 @@ class Test(TestCase):
         self.user.save()
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(302, r.status_code)
-        
+
         mp1.return_value = mock.MagicMock(content='', status_code=202)
         self._login()
         r = self.client.get(reverse('dkron:proxy'))
@@ -528,19 +524,21 @@ class Test(TestCase):
         self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(202, r.status_code)
-    
+
     @mock.patch('requests.request')
     def test_proxy_view(self, mp1):
         self.user.is_superuser = True
         self.user.save()
         self._login()
-        
+
         mp1.return_value = mock.MagicMock(content='raw content', status_code=202)
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(202, r.status_code)
         self.assertEqual(b'raw content', r.content)
 
-        mp1.return_value = mock.MagicMock(content='raw content', status_code=302, headers={'Location': 'whatever', 'X-Custom': 'untouched'})
+        mp1.return_value = mock.MagicMock(
+            content='raw content', status_code=302, headers={'Location': 'whatever', 'X-Custom': 'untouched'}
+        )
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(302, r.status_code)
         self.assertEqual(b'raw content', r.content)
@@ -549,7 +547,9 @@ class Test(TestCase):
         # non-specific header remains untouched
         self.assertEqual('untouched', r.headers['x-custom'])
 
-        mp1.return_value = mock.MagicMock(content='', status_code=302, headers={'Location': '/whatever', 'Content-Encoding': 'invalid'})
+        mp1.return_value = mock.MagicMock(
+            content='', status_code=302, headers={'Location': '/whatever', 'Content-Encoding': 'invalid'}
+        )
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(302, r.status_code)
         # leading / is trimmed
