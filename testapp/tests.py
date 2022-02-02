@@ -22,8 +22,8 @@ from dkron.apps import DkronConfig
 @override_settings(DKRON_PATH='/dkron/proxy/ui/', DKRON_URL='http://dkron')
 class Test(TestCase):
     def setUp(self):
-        # always reset _lazy_url cache as tests might need to use different settings
-        utils._lazy_url._cache = None
+        # always reset api_url cache as tests might need to use different settings
+        utils.api_url.cache_clear()
         self.user = get_user_model().objects.create_user('tester', 'tester@ppb.it', 'tester')
         self.site = AdminSite()
 
@@ -88,14 +88,14 @@ class Test(TestCase):
         j = models.Job.objects.create(name='job1')
         self.assertEqual(str(j), 'job1')
 
-    def test_lazy_url(self):
+    def test_api_url(self):
         with self.settings(DKRON_URL='http://dkron'):
-            utils._lazy_url._cache = None
-            self.assertEqual(utils._lazy_url(), 'http://dkron/v1/')
+            utils.api_url.cache_clear()
+            self.assertEqual(utils.api_url(), 'http://dkron/v1/')
 
         with self.settings(DKRON_URL='http://dkron/'):
-            utils._lazy_url._cache = None
-            self.assertEqual(utils._lazy_url(), 'http://dkron/v1/')
+            utils.api_url.cache_clear()
+            self.assertEqual(utils.api_url(), 'http://dkron/v1/')
 
     def test_sync_job(self):
         j = models.Job.objects.create(name='job1')

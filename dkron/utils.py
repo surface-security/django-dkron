@@ -1,8 +1,9 @@
 import logging
 import time
 from typing import Iterator, Literal, Optional, Union
-
 import requests
+from functools import lru_cache
+
 from django.conf import settings
 from django.core.management import call_command
 
@@ -20,15 +21,14 @@ class DkronException(Exception):
         return self.message
 
 
-def _lazy_url() -> str:
-    _u = getattr(_lazy_url, '_cache', None)
-    if _u is None:
-        if settings.DKRON_URL.endswith('/'):
-            _u = f'{settings.DKRON_URL}v1/'
-        else:
-            _u = f'{settings.DKRON_URL}/v1/'
-        setattr(_lazy_url, '_cache', _u)
-    return _u
+@lru_cache
+def dkron_url():
+    return (settings.DKRON_URL or '').rstrip('/') + '/'
+
+
+@lru_cache
+def api_url():
+    return f'{dkron_url()}v1/'
 
 
 def _set_auth(kwargs) -> None:
@@ -41,17 +41,17 @@ def _set_auth(kwargs) -> None:
 
 def _get(path, *a, **b) -> requests.Response:
     _set_auth(b)
-    return requests.get(f'{_lazy_url()}{path}', *a, **b)
+    return requests.get(f'{api_url()}{path}', *a, **b)
 
 
 def _post(path, *a, **b) -> requests.Response:
     _set_auth(b)
-    return requests.post(f'{_lazy_url()}{path}', *a, **b)
+    return requests.post(f'{api_url()}{path}', *a, **b)
 
 
 def _delete(path, *a, **b) -> requests.Response:
     _set_auth(b)
-    return requests.delete(f'{_lazy_url()}{path}', *a, **b)
+    return requests.delete(f'{api_url()}{path}', *a, **b)
 
 
 def sync_job(job, job_update=False) -> None:
