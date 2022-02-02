@@ -115,6 +115,11 @@ def resync_jobs() -> Iterator[tuple[str, Literal["u", "d"], Optional[str]]]:
         raise DkronException(r.status_code, r.text)
 
     previous_jobs = {y['name']: y for y in r.json()}
+    if settings.DKRON_JOB_LABEL:
+        previous_jobs = {
+            y['name']: y for y in previous_jobs.values()
+            if settings.DKRON_JOB_LABEL == y.get('tags', {}).get('label', '')
+        }
 
     # just post all jobs even if they already exist
     # cheaper than checking all the differences (probably)

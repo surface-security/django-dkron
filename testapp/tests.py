@@ -188,40 +188,46 @@ class Test(TestCase):
             {'name': 'job1', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
             {'name': 'job3', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
             {'name': 'job4', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
+            {'name': 'job5', 'tags': {'label': 'testapp2'}, 'metadata': {'cron': 'auto'}},
+            {'name': 'job6', 'tags': {}, 'metadata': {'cron': 'auto'}},
         ]
         mp1.return_value = mock.MagicMock(status_code=200, json=lambda: jobs)
         it = utils.resync_jobs()
 
-        with mock.patch('dkron.utils.sync_job') as mp2:
-            with mock.patch('dkron.utils.delete_job') as mp3:
-                el = next(it)
-                mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
-                self.assertEqual(el, ('job1', 'u', None))
-                mp2.assert_called_once_with(j1, jobs[0])
-                mp2.reset_mock()
+        with mock.patch(
+            'dkron.utils.sync_job'
+        ) as mp2, mock.patch(
+            'dkron.utils.delete_job'
+        ) as mp3:
+            el = next(it)
+            mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
+            self.assertEqual(('job1', 'u', None), el)
+            mp2.assert_called_once_with(j1, jobs[0])
+            mp2.reset_mock()
 
-                mp2.side_effect = utils.DkronException(666, 'looking for d/a/emon')
-                el = next(it)
-                self.assertEqual(el, ('job2', 'u', 'looking for d/a/emon'))
-                mp2.assert_called_once_with(j2, False)
-                mp2.reset_mock()
+            mp2.side_effect = utils.DkronException(666, 'looking for d/a/emon')
+            el = next(it)
+            self.assertEqual(('job2', 'u', 'looking for d/a/emon'), el)
+            mp2.assert_called_once_with(j2, False)
+            mp2.reset_mock()
 
-                # no order in a set(), check for both
-                el = next(it)
-                self.assertEqual(el[1:], ('d', None))
-                self.assertIn(el[0], ('job3', 'job4'))
-                mp3.assert_called_once_with(el[0])
-                mp3.reset_mock()
+            # no order in a set(), check for both
+            el = next(it)
+            self.assertEqual(('d', None), el[1:])
+            self.assertIn(el[0], ('job3', 'job4'))
+            mp3.assert_called_once_with(el[0])
+            mp3.reset_mock()
 
-                mp3.side_effect = utils.DkronException(666, 'looking for d/a/emon')
-                el = next(it)
-                self.assertEqual(el[1:], ('d', 'looking for d/a/emon'))
-                self.assertIn(el[0], ('job3', 'job4'))
-                mp3.assert_called_once_with(el[0])
-                mp3.reset_mock()
+            mp3.side_effect = utils.DkronException(666, 'looking for d/a/emon')
+            el = next(it)
+            self.assertEqual(el[1:], ('d', 'looking for d/a/emon'))
+            self.assertIn(el[0], ('job3', 'job4'))
+            mp3.assert_called_once_with(el[0])
+            mp3.reset_mock()
 
-                # no more items, job5 is not deleted
-                self.assertRaises(StopIteration, next, it)
+            with self.assertRaises(StopIteration):
+                # assert nothing left
+                next(it)
 
     def test_admin__change_job_enabled(self):
         j1 = models.Job.objects.create(name='job1')
