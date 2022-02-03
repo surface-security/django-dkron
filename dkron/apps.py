@@ -31,6 +31,8 @@ APP_SETTINGS = dict(
     TOKEN=None,
     # URL called by dkron webhooks to post job status to this app - passed as `--webhook-url` to dkron, so you need to map `dkron.views.webhook` in your project urls.py and this should be full URL to that route and reachable by dkron
     WEBHOOK_URL=None,
+    # string to be prefixed to each job created by this app in dkron so the same dkron cluster can be used by different apps/instances without conflicting job names (assuming unique namespaces ^^)
+    NAMESPACE=None,
 )
 
 

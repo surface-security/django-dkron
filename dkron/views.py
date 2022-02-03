@@ -38,8 +38,11 @@ def webhook(request):
     if lines[0] != settings.DKRON_TOKEN:
         return http.HttpResponseForbidden()
 
-    o = models.Job.objects.filter(name=lines[1]).first()
+    job_name = utils.trim_namespace(lines[1])
+    if not job_name:
+        return http.HttpResponseNotFound()
 
+    o = models.Job.objects.filter(name=job_name).first()
     if o is None:
         return http.HttpResponseNotFound()
 
