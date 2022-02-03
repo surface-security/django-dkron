@@ -22,8 +22,12 @@ from dkron.apps import DkronConfig
 @override_settings(DKRON_PATH='/dkron/proxy/ui/', DKRON_URL='http://dkron')
 class Test(TestCase):
     def setUp(self):
-        # always reset _lazy_url cache as tests might need to use different settings
-        utils._lazy_url._cache = None
+        # reset cached helpers
+        utils.dkron_url.cache_clear()
+        utils.api_url.cache_clear()
+        utils.namespace.cache_clear()
+        utils.namespace_prefix.cache_clear()
+
         self.user = get_user_model().objects.create_user('tester', 'tester@ppb.it', 'tester')
         self.site = AdminSite()
 
@@ -88,16 +92,16 @@ class Test(TestCase):
         j = models.Job.objects.create(name='job1')
         self.assertEqual(str(j), 'job1')
 
-    def test_lazy_url(self):
+    def test_api_url(self):
         with self.settings(DKRON_URL='http://dkron'):
-            utils._lazy_url._cache = None
-            self.assertEqual(utils._lazy_url(), 'http://dkron/v1/')
+            utils.api_url.cache_clear()
+            self.assertEqual(utils.api_url(), 'http://dkron/v1/')
 
         with self.settings(DKRON_URL='http://dkron/'):
-            utils._lazy_url._cache = None
-            self.assertEqual(utils._lazy_url(), 'http://dkron/v1/')
+            utils.api_url.cache_clear()
+            self.assertEqual(utils.api_url(), 'http://dkron/v1/')
 
-    def test_sync_job(self):
+    def test_sync_job(self, job_prefix=''):
         j = models.Job.objects.create(name='job1')
         with mock.patch('requests.post') as mp:
             mp.return_value = mock.MagicMock(status_code=201)
@@ -105,7 +109,7 @@ class Test(TestCase):
             mp.assert_called_once_with(
                 'http://dkron/v1/jobs',
                 json={
-                    'name': 'job1',
+                    'name': f'{job_prefix}job1',
                     'tags': {'label': 'testapp:1'},
                     'metadata': {'cron': 'auto'},
                     'schedule': '',
@@ -126,7 +130,7 @@ class Test(TestCase):
             mp.assert_called_once_with(
                 'http://dkron/v1/jobs',
                 json={
-                    'name': 'job1',
+                    'name': f'{job_prefix}job1',
                     'tags': {'label': 'testapp:1'},
                     'metadata': {'cron': 'auto'},
                     'schedule': '@every 1h',
@@ -146,14 +150,14 @@ class Test(TestCase):
             mp.assert_called_once_with(
                 'http://dkron/v1/jobs',
                 json={
-                    'name': 'job1',
+                    'name': f'{job_prefix}job1',
                     'tags': {'label': 'testapp:1'},
                     'metadata': {'cron': 'auto'},
                     'schedule': '@manually',
                     'executor_config': {'shell': 'true', 'command': 'echo test'},
                     'disabled': True,
                     'executor': 'shell',
-                    'parent_job': 'other',
+                    'parent_job': f'{job_prefix}other',
                     'retries': 0,
                 },
             )
@@ -165,18 +169,18 @@ class Test(TestCase):
             self.assertEqual(exc.exception.code, 500)
             self.assertEqual(exc.exception.message, 'Whatever')
 
-    def test_delete_job(self):
+    def test_delete_job(self, job_prefix=''):
         j = models.Job.objects.create(name='job1')
         with mock.patch('requests.delete') as mp:
             mp.return_value = mock.MagicMock(status_code=200)
             utils.delete_job(j)
-            mp.assert_called_once_with('http://dkron/v1/jobs/job1')
+            mp.assert_called_once_with(f'http://dkron/v1/jobs/{job_prefix}job1')
 
             mp.reset_mock()
             mp.return_value = mock.MagicMock(status_code=500, text='Whatever')
             with self.assertRaisesMessage(utils.DkronException, '') as exc:
                 utils.delete_job('job1')
-            mp.assert_called_once_with('http://dkron/v1/jobs/job1')
+            mp.assert_called_once_with(f'http://dkron/v1/jobs/{job_prefix}job1')
             self.assertEqual(exc.exception.code, 500)
             self.assertEqual(exc.exception.message, 'Whatever')
 
@@ -188,40 +192,43 @@ class Test(TestCase):
             {'name': 'job1', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
             {'name': 'job3', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
             {'name': 'job4', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
+            # job5 and job6 ignored as label does not match
+            {'name': 'job5', 'tags': {'label': 'testapp2'}, 'metadata': {'cron': 'auto'}},
+            {'name': 'job6', 'tags': {}, 'metadata': {'cron': 'auto'}},
         ]
         mp1.return_value = mock.MagicMock(status_code=200, json=lambda: jobs)
         it = utils.resync_jobs()
 
-        with mock.patch('dkron.utils.sync_job') as mp2:
-            with mock.patch('dkron.utils.delete_job') as mp3:
-                el = next(it)
-                mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
-                self.assertEqual(el, ('job1', 'u', None))
-                mp2.assert_called_once_with(j1, jobs[0])
-                mp2.reset_mock()
+        with mock.patch('dkron.utils.sync_job') as mp2, mock.patch('dkron.utils.delete_job') as mp3:
+            el = next(it)
+            mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
+            self.assertEqual(('job1', 'u', None), el)
+            mp2.assert_called_once_with(j1, jobs[0])
+            mp2.reset_mock()
 
-                mp2.side_effect = utils.DkronException(666, 'looking for d/a/emon')
-                el = next(it)
-                self.assertEqual(el, ('job2', 'u', 'looking for d/a/emon'))
-                mp2.assert_called_once_with(j2, False)
-                mp2.reset_mock()
+            mp2.side_effect = utils.DkronException(666, 'looking for d/a/emon')
+            el = next(it)
+            self.assertEqual(('job2', 'u', 'looking for d/a/emon'), el)
+            mp2.assert_called_once_with(j2, False)
+            mp2.reset_mock()
 
-                # no order in a set(), check for both
-                el = next(it)
-                self.assertEqual(el[1:], ('d', None))
-                self.assertIn(el[0], ('job3', 'job4'))
-                mp3.assert_called_once_with(el[0])
-                mp3.reset_mock()
+            # no order in a set(), check for both
+            el = next(it)
+            self.assertEqual(('d', None), el[1:])
+            self.assertIn(el[0], ('job3', 'job4'))
+            mp3.assert_called_once_with(el[0])
+            mp3.reset_mock()
 
-                mp3.side_effect = utils.DkronException(666, 'looking for d/a/emon')
-                el = next(it)
-                self.assertEqual(el[1:], ('d', 'looking for d/a/emon'))
-                self.assertIn(el[0], ('job3', 'job4'))
-                mp3.assert_called_once_with(el[0])
-                mp3.reset_mock()
+            mp3.side_effect = utils.DkronException(666, 'looking for d/a/emon')
+            el = next(it)
+            self.assertEqual(el[1:], ('d', 'looking for d/a/emon'))
+            self.assertIn(el[0], ('job3', 'job4'))
+            mp3.assert_called_once_with(el[0])
+            mp3.reset_mock()
 
-                # no more items, job5 is not deleted
-                self.assertRaises(StopIteration, next, it)
+            with self.assertRaises(StopIteration):
+                # assert nothing left
+                next(it)
 
     def test_admin__change_job_enabled(self):
         j1 = models.Job.objects.create(name='job1')
@@ -341,7 +348,7 @@ class Test(TestCase):
                 html=True,
             )
 
-    def test_webhook(self):
+    def test_webhook(self, job_prefix=''):
         with override_settings(DKRON_TOKEN=None):
             r = self.client.get(reverse('dkron_api:webhook'))
             self.assertEqual(r.status_code, 404)
@@ -364,17 +371,21 @@ class Test(TestCase):
         j = models.Job.objects.create(name='job1')
         self.assertFalse(j.last_run_success)
 
-        r = self.client.post(reverse('dkron_api:webhook'), data='test\njob1\n3', content_type='not_form_data')
+        r = self.client.post(
+            reverse('dkron_api:webhook'), data=f'test\n{job_prefix}job1\n3', content_type='not_form_data'
+        )
         self.assertEqual(r.status_code, 200)
         j.refresh_from_db()
         self.assertFalse(j.last_run_success)
 
-        r = self.client.post(reverse('dkron_api:webhook'), data='test\njob1\ntrue', content_type='not_form_data')
+        r = self.client.post(
+            reverse('dkron_api:webhook'), data=f'test\n{job_prefix}job1\ntrue', content_type='not_form_data'
+        )
         self.assertEqual(r.status_code, 200)
         j.refresh_from_db()
         self.assertTrue(j.last_run_success)
 
-    def test_webhook_notify(self):
+    def test_webhook_notify(self, job_prefix=''):
         ev = notify_models.Event.objects.get(name='dkron_failed_job')
         notify_models.Subscription.objects.create(
             event=ev, service=notify_models.Subscription.Service.SLACK, target='@elon'
@@ -382,7 +393,9 @@ class Test(TestCase):
 
         j = models.Job.objects.create(name='job1', notify_on_error=False)
 
-        r = self.client.post(reverse('dkron_api:webhook'), data='test\njob1\n3', content_type='not_form_data')
+        r = self.client.post(
+            reverse('dkron_api:webhook'), data=f'test\n{job_prefix}job1\n3', content_type='not_form_data'
+        )
         self.assertEqual(r.status_code, 200)
         j.refresh_from_db()
         self.assertFalse(j.last_run_success)
@@ -390,7 +403,9 @@ class Test(TestCase):
 
         j.notify_on_error = True
         j.save()
-        r = self.client.post(reverse('dkron_api:webhook'), data='test\njob1\n3', content_type='not_form_data')
+        r = self.client.post(
+            reverse('dkron_api:webhook'), data=f'test\n{job_prefix}job1\n3', content_type='not_form_data'
+        )
         self.assertEqual(r.status_code, 200)
         j.refresh_from_db()
         self.assertFalse(j.last_run_success)
@@ -400,7 +415,9 @@ class Test(TestCase):
             ':red-pipeline: dkron job *job1* <http://testserver/dkron/proxy/ui/#/jobs/job1/show/executions|failed>',
         )
 
-        r = self.client.post(reverse('dkron_api:webhook'), data='test\njob1\ntrue', content_type='not_form_data')
+        r = self.client.post(
+            reverse('dkron_api:webhook'), data=f'test\n{job_prefix}job1\ntrue', content_type='not_form_data'
+        )
         self.assertEqual(r.status_code, 200)
         j.refresh_from_db()
         self.assertTrue(j.last_run_success)
@@ -408,7 +425,7 @@ class Test(TestCase):
 
     @mock.patch('time.time', return_value=1)
     @mock.patch('requests.post')
-    def test_run_async(self, mp, tp):
+    def test_run_async(self, mp, tp, job_prefix=''):
         mpp = mock.MagicMock()
         mp.return_value = mpp
         # Because of the way mock attributes are stored you can’t directly attach a PropertyMock to a mock object
@@ -420,7 +437,7 @@ class Test(TestCase):
                 mock.call(
                     'http://dkron/v1/jobs',
                     json={
-                        'name': 'tmp_somecommand_1',
+                        'name': f'{job_prefix}tmp_somecommand_1',
                         'tags': {'label': 'testapp:1'},
                         'schedule': '@manually',
                         'executor_config': {'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'},
@@ -432,7 +449,10 @@ class Test(TestCase):
                 ),
             )
         )
-        self.assertEqual(x, ('tmp_somecommand_1', '/dkron/proxy/ui/#/jobs/tmp_somecommand_1/show/executions'))
+        self.assertEqual(
+            x,
+            (f'{job_prefix}tmp_somecommand_1', f'/dkron/proxy/ui/#/jobs/{job_prefix}tmp_somecommand_1/show/executions'),
+        )
 
     @mock.patch('after_response.decorators.AFTER_RESPONSE_IMMEDIATE', new_callable=mock.PropertyMock, return_value=True)
     @mock.patch('dkron.utils.requests')
@@ -507,7 +527,7 @@ class Test(TestCase):
         self.user.save()
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(302, r.status_code)
-        
+
         mp1.return_value = mock.MagicMock(content='', status_code=202)
         self._login()
         r = self.client.get(reverse('dkron:proxy'))
@@ -522,19 +542,21 @@ class Test(TestCase):
         self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(202, r.status_code)
-    
+
     @mock.patch('requests.request')
     def test_proxy_view(self, mp1):
         self.user.is_superuser = True
         self.user.save()
         self._login()
-        
+
         mp1.return_value = mock.MagicMock(content='raw content', status_code=202)
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(202, r.status_code)
         self.assertEqual(b'raw content', r.content)
 
-        mp1.return_value = mock.MagicMock(content='raw content', status_code=302, headers={'Location': 'whatever', 'X-Custom': 'untouched'})
+        mp1.return_value = mock.MagicMock(
+            content='raw content', status_code=302, headers={'Location': 'whatever', 'X-Custom': 'untouched'}
+        )
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(302, r.status_code)
         self.assertEqual(b'raw content', r.content)
@@ -543,10 +565,80 @@ class Test(TestCase):
         # non-specific header remains untouched
         self.assertEqual('untouched', r.headers['x-custom'])
 
-        mp1.return_value = mock.MagicMock(content='', status_code=302, headers={'Location': '/whatever', 'Content-Encoding': 'invalid'})
+        mp1.return_value = mock.MagicMock(
+            content='', status_code=302, headers={'Location': '/whatever', 'Content-Encoding': 'invalid'}
+        )
         r = self.client.get(reverse('dkron:proxy'))
         self.assertEqual(302, r.status_code)
         # leading / is trimmed
         self.assertEqual(reverse('dkron:proxy') + 'whatever', r.headers['location'])
         # some headers from upstream are dropped
         self.assertIsNone(r.headers.get('Content-Encoding'))
+
+
+@override_settings(DKRON_PATH='/dkron/proxy/ui/', DKRON_URL='http://dkron', DKRON_NAMESPACE='wtv')
+class TestNamespace(Test):
+    def test_sync_job(self, job_prefix=''):
+        super().test_sync_job(job_prefix='wtv_')
+
+    def test_delete_job(self, job_prefix=''):
+        super().test_delete_job(job_prefix='wtv_')
+
+    @mock.patch('requests.get')
+    def test_resync_jobs(self, mp1):
+        j1 = models.Job.objects.create(name='job1')
+        j2 = models.Job.objects.create(name='job2')
+        jobs = [
+            {'name': 'wtv_job1', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
+            {'name': 'wtv_job3', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
+            # ignore, not wtv namespace
+            {'name': 'ign_job4', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
+            # skipped, wrong label
+            {'name': 'wtv_job5', 'tags': {'label': 'testapp2'}, 'metadata': {'cron': 'auto'}},
+        ]
+        mp1.return_value = mock.MagicMock(status_code=200, json=lambda: jobs)
+        it = utils.resync_jobs()
+
+        with mock.patch('dkron.utils.sync_job') as mp2, mock.patch('dkron.utils.delete_job') as mp3:
+            el = next(it)
+            mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
+            self.assertEqual(('job1', 'u', None), el)
+            mp2.assert_called_once_with(j1, jobs[0])
+            mp2.reset_mock()
+
+            mp2.side_effect = utils.DkronException(666, 'looking for d/a/emon')
+            el = next(it)
+            self.assertEqual(('job2', 'u', 'looking for d/a/emon'), el)
+            mp2.assert_called_once_with(j2, False)
+            mp2.reset_mock()
+
+            # no order in a set(), check for both
+            el = next(it)
+            self.assertEqual(('job3', 'd', None), el)
+            mp3.assert_called_once_with('job3')
+            mp3.reset_mock()
+
+            with self.assertRaises(StopIteration):
+                # assert nothing left
+                next(it)
+
+    def test_webhook(self, job_prefix=''):
+        super().test_webhook(job_prefix='wtv_')
+
+    def test_webhook_namespace_mismatch(self):
+        j = models.Job.objects.create(name='job1')
+        self.assertFalse(j.last_run_success)
+
+        r = self.client.post(reverse('dkron_api:webhook'), data='test\njob1\ntrue', content_type='not_form_data')
+        self.assertEqual(r.status_code, 404)
+
+        r = self.client.post(reverse('dkron_api:webhook'), data='test\nwtv_job1\ntrue', content_type='not_form_data')
+        self.assertEqual(r.status_code, 200)
+        j.refresh_from_db()
+        self.assertTrue(j.last_run_success)
+
+    def test_webhook_notify(self, job_prefix=''):
+        super().test_webhook_notify(job_prefix='wtv_')
+
+    def test_run_async(self, job_prefix=''):
+        super().test_run_async(job_prefix='wtv_')

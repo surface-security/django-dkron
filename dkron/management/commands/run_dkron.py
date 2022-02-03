@@ -72,6 +72,9 @@ class Command(LogBaseCommand):
             args.extend(['--encrypt', options['encrypt'] or settings.DKRON_ENCRYPT])
         for tag in settings.DKRON_TAGS or []:
             args.extend(['--tag', tag])
+        # make sure the LABEL tag is included
+        if settings.DKRON_JOB_LABEL:
+            args.extend(['--tag', f'label={settings.DKRON_JOB_LABEL}'])
         for j in options['join'] or settings.DKRON_JOIN or []:
             args.extend(['--join', j])
         if settings.DKRON_WORKDIR:

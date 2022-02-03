@@ -22,5 +22,17 @@ class Job(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def namespaced_name(self):
+        return utils.add_namespace(self.name)
+
+    @property
+    def parent_name(self):
+        return self.schedule[8:] if self.schedule.startswith('@parent ') else ''
+
     class Meta:
         permissions = (("can_use_dashboard", "Can use the dashboard"),)
+
+
+# circular dependency
+from . import utils

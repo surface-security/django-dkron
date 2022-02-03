@@ -38,8 +38,11 @@ def webhook(request):
     if lines[0] != settings.DKRON_TOKEN:
         return http.HttpResponseForbidden()
 
-    o = models.Job.objects.filter(name=lines[1]).first()
+    job_name = utils.trim_namespace(lines[1])
+    if not job_name:
+        return http.HttpResponseNotFound()
 
+    o = models.Job.objects.filter(name=job_name).first()
     if o is None:
         return http.HttpResponseNotFound()
 
@@ -73,7 +76,7 @@ def proxy(request, path=None):
         # also, dkron does not use cookies, simply drop the whole header to avoid sending django app session over
         if k.lower() not in ('content-length', 'cookie')
     }
-    url = settings.DKRON_URL + (path or '')
+    url = utils.dkron_url() + (path or '')
 
     if settings.DKRON_API_AUTH:
         headers['Authorization'] = f'Basic {settings.DKRON_API_AUTH}'
@@ -127,8 +130,8 @@ def proxy(request, path=None):
 
 def _fix_location_header(path, location):
     base = reverse('dkron:proxy')
-    if location.startswith(settings.DKRON_URL):
-        return base + location[len(settings.DKRON_URL) :]
+    if location.startswith(utils.dkron_url()):
+        return base + location[len(utils.dkron_url()) :]
     elif location.startswith('/'):
         return base + location[1:]
     else:

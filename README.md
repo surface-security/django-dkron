@@ -28,14 +28,15 @@ The following app settings are available for customization (from [dkron/apps.py]
 | DKRON_VERSION | `3.1.10` | dkron version to (download and) use |
 | DKRON_DOWNLOAD_URL_TEMPLATE | `https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_amd64.tar.gz` | can be changed in case a dkron fork is meant to be used |
 | DKRON_SERVER | `False` | always `run_dkron` in server mode |
-| DKRON_TAGS | `[]` | tags for the agent/server created by `run_dkron` |
-| DKRON_JOB_LABEL | | label for the jobs managed by this app - make sure that any labels here are part of TAGS otherwise agent will not pick up the job |
+| DKRON_TAGS | `[]` | tags for the agent/server created by `run_dkron` - `label=` tag is not required as it is added by `DKRON_JOB_LABEL` |
+| DKRON_JOB_LABEL | | label for the jobs managed by this app, used to make this app agent run only jobs created by this app |
 | DKRON_JOIN | `[]` | --join when using `run_dkron` |
 | DKRON_WORKDIR |  | workdir of `run_dkron` |
 | DKRON_ENCRYPT |  | gossip encrypt key for `run_dkron` |
 | DKRON_API_AUTH |  | HTTP Basic auth header value, if dkron instance is protected with it (really recommended, if instance is exposed) |
 | DKRON_TOKEN |  | Token used by `run_dkron` for webhook calls into this app |
 | DKRON_WEBHOOK_URL |  | URL called by dkron webhooks to post job status to this app - passed as `--webhook-url` to dkron, so you need to map `dkron.views.webhook` in your project urls.py and this should be full URL to that route and reachable by dkron|
+| DKRON_NAMESPACE | | string to be prefixed to each job created by this app in dkron so the same dkron cluster can be used by different apps/instances without conflicting job names (assuming unique namespaces ^^) |
 
 Besides starting the django app (with `./manage.py runserver`, `gunicorn` or similar) also start dkron agent with `./manage.py run_dkron`:
 

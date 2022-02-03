@@ -15,9 +15,9 @@ APP_SETTINGS = dict(
     DOWNLOAD_URL_TEMPLATE='https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_amd64.tar.gz',
     # always `run_dkron` in server mode
     SERVER=False,
-    # tags for the agent/server created by `run_dkron`
+    # tags for the agent/server created by `run_dkron` - `label=` tag is not required as it is added by `DKRON_JOB_LABEL`
     TAGS=[],
-    # label for the jobs managed by this app - make sure that any labels here are part of TAGS otherwise agent will not pick up the job
+    # label for the jobs managed by this app, used to make this app agent run only jobs created by this app`
     JOB_LABEL=None,
     # --join when using `run_dkron`
     JOIN=[],
@@ -31,6 +31,8 @@ APP_SETTINGS = dict(
     TOKEN=None,
     # URL called by dkron webhooks to post job status to this app - passed as `--webhook-url` to dkron, so you need to map `dkron.views.webhook` in your project urls.py and this should be full URL to that route and reachable by dkron
     WEBHOOK_URL=None,
+    # string to be prefixed to each job created by this app in dkron so the same dkron cluster can be used by different apps/instances without conflicting job names (assuming unique namespaces ^^)
+    NAMESPACE=None,
 )
 
 

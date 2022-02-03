@@ -123,7 +123,6 @@ STATIC_URL = '/static/'
 
 DKRON_TOKEN = 'test'
 DKRON_URL = 'http://localhost:8888/'
-DKRON_TAGS = ['label=testapp']
 DKRON_JOB_LABEL = 'testapp'
 DKRON_SERVER = True
 
