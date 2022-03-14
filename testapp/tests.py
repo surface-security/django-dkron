@@ -412,7 +412,7 @@ class Test(TestCase):
         self.assertEqual(notify_models.Notification.objects.count(), 1)
         self.assertEqual(
             notify_models.Notification.objects.first().message,
-            ':red-pipeline: dkron job *job1* <http://testserver/dkron/proxy/ui/#/jobs/job1/show/executions|failed>',
+            f':red-pipeline: dkron job *job1* <http://testserver/dkron/proxy/ui/#/jobs/{job_prefix}job1/show/executions|failed>',
         )
 
         r = self.client.post(
@@ -451,7 +451,7 @@ class Test(TestCase):
         )
         self.assertEqual(
             x,
-            (f'{job_prefix}tmp_somecommand_1', f'/dkron/proxy/ui/#/jobs/{job_prefix}tmp_somecommand_1/show/executions'),
+            ('tmp_somecommand_1', f'/dkron/proxy/ui/#/jobs/{job_prefix}tmp_somecommand_1/show/executions'),
         )
 
     @mock.patch('after_response.decorators.AFTER_RESPONSE_IMMEDIATE', new_callable=mock.PropertyMock, return_value=True)

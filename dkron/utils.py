@@ -252,11 +252,11 @@ def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
                     val = ' '.join(val)
                 final_command += f' --{k.replace("_", "-")} {val}'
 
-    name = add_namespace(f'tmp_{command}_{time.time():.0f}')
+    name = f'tmp_{command}_{time.time():.0f}'
     r = _post(
         'jobs',
         json={
-            'name': name,
+            'name': add_namespace(name),
             'schedule': '@manually',
             'executor': 'shell',
             'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
@@ -274,7 +274,7 @@ def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
 
 
 def job_executions(job_name):
-    return f'{settings.DKRON_PATH}#/jobs/{job_name}/show/executions'
+    return f'{settings.DKRON_PATH}#/jobs/{add_namespace(job_name)}/show/executions'
 
 
 def run_async(command, *args, **kwargs) -> Union[tuple[str, str], str]:
