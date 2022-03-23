@@ -12,7 +12,7 @@ APP_SETTINGS = dict(
     # dkron version to (download and) use
     VERSION='3.1.10',
     # can be changed in case a dkron fork is meant to be used
-    DOWNLOAD_URL_TEMPLATE='https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_amd64.tar.gz',
+    DOWNLOAD_URL_TEMPLATE='https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_{machine}.tar.gz',
     # always `run_dkron` in server mode
     SERVER=False,
     # tags for the agent/server created by `run_dkron` - `label=` tag is not required as it is added by `DKRON_JOB_LABEL`
@@ -38,6 +38,7 @@ APP_SETTINGS = dict(
 
 class DkronConfig(AppConfig):
     name = 'dkron'
+    default_auto_field = 'django.db.models.AutoField'
 
     def ready(self):
         for k, v in APP_SETTINGS.items():
