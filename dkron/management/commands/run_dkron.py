@@ -23,6 +23,12 @@ class Command(LogBaseCommand):
         parser.add_argument(
             '-e', '--encrypt', type=str, help='Key for encrypting network traffic. Must be a base64-encoded 16-byte key'
         )
+        parser.add_argument(
+            '--node-name',
+            type=str,
+            default=settings.DKRON_NODE_NAME,
+            help='Key for encrypting network traffic. Must be a base64-encoded 16-byte key',
+        )
 
     def download_dkron(self):
         """
@@ -96,6 +102,8 @@ class Command(LogBaseCommand):
             )
         if options['encrypt'] or settings.DKRON_ENCRYPT:
             args.extend(['--encrypt', options['encrypt'] or settings.DKRON_ENCRYPT])
+        if options['node_name']:
+            args.extend(['--node-name', options['node_name']])
         for tag in settings.DKRON_TAGS or []:
             args.extend(['--tag', tag])
         # make sure the LABEL tag is included

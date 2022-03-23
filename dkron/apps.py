@@ -33,6 +33,8 @@ APP_SETTINGS = dict(
     WEBHOOK_URL=None,
     # string to be prefixed to each job created by this app in dkron so the same dkron cluster can be used by different apps/instances without conflicting job names (assuming unique namespaces ^^)
     NAMESPACE=None,
+    # node name to be passed to dkron as `--node-name` - defaults to machine hostname
+    NODE_NAME=None,
 )
 
 

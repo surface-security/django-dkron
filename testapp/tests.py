@@ -521,6 +521,43 @@ class Test(TestCase):
 
         exec_mock.assert_called_once_with(exe_name, [exe_name, 'agent', '--tag', 'label=testapp'])
 
+    @override_settings(
+        DKRON_SERVER=True,
+        DKRON_NODE_NAME='whatever',
+    )
+    @mock.patch('os.execv')
+    def test_run_dkron(self, exec_mock):
+        err = StringIO()
+        out = StringIO()
+
+        # skip download
+        tmp = tempfile.mkdtemp()
+        exe_name = os.path.join(tmp, 'dkron.exe' if platform.system() == 'Windows' else 'dkron')
+        with open(exe_name, 'wb') as f:
+            f.write(b'1')
+
+        with mock.patch('tempfile.mkdtemp', return_value=tmp):
+            management.call_command('run_dkron', stdout=out, stderr=err)
+
+        exec_mock.assert_called_once_with(
+            exe_name,
+            [
+                exe_name,
+                'agent',
+                '--server',
+                '--http-addr',
+                ':8888',
+                '--bootstrap-expect',
+                '1',
+                '--data-dir',
+                tmp,
+                '--node-name',
+                'whatever',
+                '--tag',
+                'label=testapp',
+            ],
+        )
+
     @mock.patch('requests.request')
     def test_proxy_auth(self, mp1):
         self.user.is_superuser = True
