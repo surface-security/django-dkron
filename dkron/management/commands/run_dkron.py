@@ -4,6 +4,7 @@ import platform
 import requests
 import shutil
 import tarfile
+from pathlib import Path
 
 from django.conf import settings
 
@@ -24,19 +25,44 @@ class Command(LogBaseCommand):
         )
 
     def download_dkron(self):
-        if settings.DKRON_BIN_DIR is None:
-            bin_dir = tempfile.mkdtemp()
-        else:
-            bin_dir = os.path.join(settings.DKRON_BIN_DIR, settings.DKRON_VERSION)
-        system = platform.system().lower()
-        exe_path = os.path.join(bin_dir, 'dkron.exe' if system == 'windows' else 'dkron')
+        """
+        this needs to map platform to the filenames used by dkron (goreleaser):
 
-        # TODO: simple check if download is required, get checksum from somewhere to make sure it's correct binary?
-        if not os.path.isfile(exe_path):
+        docker run --rm fopina/wine-python:3 -c 'import platform;print(platform.system(),platform.machine())'
+        Windows AMD64
+        python -c 'import platform;print(platform.system(),platform.machine())'
+        Darwin x86_64
+        docker run --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+        Linux x86_64
+        docker run --platform linux/arm64 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+        Linux aarch64
+        docker run --platform linux/arm/v7 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+        Linux armv7l
+        """
+        if settings.DKRON_BIN_DIR is None:
+            bin_dir = Path(tempfile.mkdtemp())
+        else:
+            bin_dir = Path(settings.DKRON_BIN_DIR) / settings.DKRON_VERSION
+
+        system = platform.system().lower()
+        exe_path = bin_dir / ('dkron.exe' if system == 'windows' else 'dkron')
+        machine = platform.machine().lower()
+
+        if 'arm' in machine or 'aarch' in machine:
+            if '64' in machine:
+                machine = 'arm64'
+            else:
+                machine = 'armv7'
+        else:
+            machine = 'amd64'
+
+        # check if download is required
+        if not exe_path.is_file():
             os.makedirs(bin_dir, exist_ok=True)
             dl_url = settings.DKRON_DOWNLOAD_URL_TEMPLATE.format(
                 version=settings.DKRON_VERSION,
                 system=system,
+                machine=machine,
             )
             tarball = f'{exe_path}.tar.gz'
             self.log(f'Downloading {dl_url}')
@@ -48,7 +74,7 @@ class Command(LogBaseCommand):
             tf.extractall(path=bin_dir)
             os.unlink(tarball)
 
-        return exe_path, bin_dir
+        return str(exe_path), str(bin_dir)
 
     def handle(self, *_, **options):
         # TODO: check if there's any shutdown we should care before execv()

@@ -642,3 +642,47 @@ class TestNamespace(Test):
 
     def test_run_async(self, job_prefix=''):
         super().test_run_async(job_prefix='wtv_')
+
+
+class TestOthers(TestCase):
+    @mock.patch('platform.machine')
+    @mock.patch('platform.system')
+    @mock.patch('requests.get')
+    @override_settings(DKRON_BIN_DIR=None)
+    def test_run_dkron_download(self, req_mock, sys_mock, mach_mock):
+        from dkron.management.commands import run_dkron
+        from io import BytesIO
+        import base64
+
+        fake_tar = base64.decodebytes(
+            # tarfile with an empty file
+            b'H4sICJNVO2IAA2EudGFyAEtkoD0wMDAwMzFRANHmZqZg2sAIwocBBUMTI0MzM1MjM0NDBQNDQzNjIwYFAzq4jaG0uCSxCOiUtPyCzLxE3OqAytLS8JgD9QecHgWjYBSMgkEOAKshHuMABgAA'
+        )
+        cmd = run_dkron.Command()
+
+        def _check(system, machine, url):
+            req_mock.reset_mock()
+            sys_mock.return_value = system
+            mach_mock.return_value = machine
+            req_mock.return_value.__enter__.return_value = mock.MagicMock(raw=BytesIO(fake_tar))
+            cmd.download_dkron()
+            req_mock.assert_called_once_with(
+                url,
+                stream=True,
+            )
+
+        _check(
+            'darwin',
+            'x86_64',
+            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_darwin_amd64.tar.gz',
+        )
+        _check(
+            'windows',
+            'AMD64',
+            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_windows_amd64.tar.gz',
+        )
+        _check(
+            'Linux',
+            'aarch64',
+            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_linux_arm64.tar.gz',
+        )
