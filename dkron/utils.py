@@ -253,7 +253,7 @@ def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
                     for v in val:
                         final_command += f' --{k} {v}'
                 else:
-                    final_command += f' --{k.replace("_", "-")} {val}'
+                    final_command += f' --{k} {val}'
 
     name = f'tmp_{command}_{time.time():.0f}'
     r = _post(
