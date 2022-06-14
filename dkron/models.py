@@ -7,7 +7,7 @@ class Job(models.Model):
         max_length=255,
         null=False,
         blank=False,
-        help_text='https://dkron.io/usage/cron-spec/ or "@parent JOBNAME" for dependent jobs',
+        help_text='https://dkron.io/docs/usage/cron-spec/ or "@parent JOBNAME" for dependent jobs',
     )
     # if we add more executors (besides the default "shell"), this needs to change
     command = models.CharField(max_length=255, null=False, blank=False)
