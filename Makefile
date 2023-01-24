@@ -1,13 +1,13 @@
 .PHONY: style
 style:
-	black --target-version=py36 \
+	black --target-version=py311 \
 	      --line-length=120 \
 		  --skip-string-normalization \
 		  dkron testapp setup.py
 
 .PHONY: style_check
 style_check:
-	black --target-version=py36 \
+	black --target-version=py311 \
 	      --line-length=120 \
 		  --skip-string-normalization \
 		  --check \
