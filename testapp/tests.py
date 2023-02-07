@@ -431,7 +431,8 @@ class Test(TestCase):
         # Because of the way mock attributes are stored you can’t directly attach a PropertyMock to a mock object
         # https://docs.python.org/3/library/unittest.mock.html#raising-exceptions-on-attribute-access
         type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
-        x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
+        with mock.patch('django.utils.timezone.now', return_value=timezone.make_aware(timezone.datetime(2023, 2, 7))):
+            x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
         mp.assert_has_calls(
             (
                 mock.call(
@@ -439,13 +440,12 @@ class Test(TestCase):
                     json={
                         'name': f'{job_prefix}tmp_somecommand_1',
                         'tags': {'label': 'testapp:1'},
-                        'schedule': '@manually',
+                        'schedule': '@at 2023-02-07T00:00:05+00:00',
                         'executor_config': {'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'},
                         'metadata': {'temp': 'true'},
                         'disabled': False,
                         'executor': 'shell',
                     },
-                    params={'runoncreate': 'true'},
                 ),
             )
         )

@@ -7,6 +7,7 @@ from functools import lru_cache
 
 from django.conf import settings
 from django.core.management import call_command
+from django.utils import timezone
 
 from dkron import models
 
@@ -260,7 +261,7 @@ def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
         'jobs',
         json={
             'name': add_namespace(name),
-            'schedule': '@manually',
+            'schedule': f'@at {(timezone.now() + timezone.timedelta(seconds=5)).isoformat()}',
             'executor': 'shell',
             'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
             'metadata': {'temp': 'true'},
@@ -273,10 +274,6 @@ def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
     )
 
     if r.status_code != 201:
-        raise DkronException(r.status_code, r.text)
-
-    r = _post(f'jobs/{add_namespace(name)}')
-    if r.status_code != 200:
         raise DkronException(r.status_code, r.text)
 
     return name, job_executions(name)
