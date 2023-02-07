@@ -267,10 +267,16 @@ def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
             'disabled': False,
             'executor_config': {'command': final_command},
         },
-        params={'runoncreate': 'true'},
+        # FIXME: workaround for https://github.com/surface-security/django-dkron/issues/18
+        # if dkron fixes it, restore this (either based on dkron version or ignore the bug for old version...)
+        # params={'runoncreate': 'true'},
     )
 
     if r.status_code != 201:
+        raise DkronException(r.status_code, r.text)
+
+    r = _post(f'jobs/{add_namespace(name)}')
+    if r.status_code != 200:
         raise DkronException(r.status_code, r.text)
 
     return name, job_executions(name)
