@@ -7,6 +7,7 @@ from functools import lru_cache
 
 from django.conf import settings
 from django.core.management import call_command
+from django.utils import timezone
 
 from dkron import models
 
@@ -260,14 +261,16 @@ def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
         'jobs',
         json={
             'name': add_namespace(name),
-            'schedule': '@manually',
+            'schedule': f'@at {(timezone.now() + timezone.timedelta(seconds=5)).isoformat()}',
             'executor': 'shell',
             'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
             'metadata': {'temp': 'true'},
             'disabled': False,
             'executor_config': {'command': final_command},
         },
-        params={'runoncreate': 'true'},
+        # FIXME: workaround for https://github.com/surface-security/django-dkron/issues/18
+        # if dkron fixes it, restore this (either based on dkron version or ignore the bug for old version...)
+        # params={'runoncreate': 'true'},
     )
 
     if r.status_code != 201:
