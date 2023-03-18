@@ -526,7 +526,7 @@ class Test(TestCase):
         DKRON_NODE_NAME='whatever',
     )
     @mock.patch('os.execv')
-    def test_run_dkron(self, exec_mock):
+    def test_run_dkron_server(self, exec_mock):
         err = StringIO()
         out = StringIO()
 
@@ -557,6 +557,45 @@ class Test(TestCase):
                 'label=testapp',
             ],
         )
+
+    @override_settings(
+        DKRON_SERVER=True,
+        DKRON_TOKEN='x',
+        DKRON_WEBHOOK_URL='https://whatever',
+    )
+    @mock.patch('os.execv')
+    def test_run_dkron_webhook(self, exec_mock):
+        err = StringIO()
+        out = StringIO()
+
+        # skip download
+        tmp = tempfile.mkdtemp()
+        exe_name = os.path.join(tmp, 'dkron.exe' if platform.system() == 'Windows' else 'dkron')
+        with open(exe_name, 'wb') as f:
+            f.write(b'1')
+
+        with mock.patch('tempfile.mkdtemp', return_value=tmp):
+            with override_settings(DKRON_VERSION='3.1.1'):
+                utils.dkron_binary_version.cache_clear()
+                management.call_command('run_dkron', stdout=out, stderr=err)
+                self.assertEqual(exec_mock.call_count, 1)
+                exec_args = exec_mock.call_args_list[0][0][1]
+                self.assertIn('--webhook-url', exec_args)
+                opt_i = exec_args.index('--webhook-url')
+                self.assertEqual(
+                    exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload']
+                )
+            exec_mock.reset_mock()
+            with override_settings(DKRON_VERSION='3.2.1'):
+                utils.dkron_binary_version.cache_clear()
+                management.call_command('run_dkron', stdout=out, stderr=err)
+                self.assertEqual(exec_mock.call_count, 1)
+                exec_args = exec_mock.call_args_list[0][0][1]
+                self.assertIn('--webhook-endpoint', exec_args)
+                opt_i = exec_args.index('--webhook-endpoint')
+                self.assertEqual(
+                    exec_args[opt_i : opt_i + 3], ['--webhook-endpoint', 'https://whatever', '--webhook-payload']
+                )
 
     @mock.patch('requests.request')
     def test_proxy_auth(self, mp1):
@@ -723,3 +762,20 @@ class TestOthers(TestCase):
             'aarch64',
             'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_linux_arm64.tar.gz',
         )
+
+    def test_utils_dkron_version_tuple(self):
+        utils.dkron_binary_version.cache_clear()
+        with override_settings(DKRON_VERSION='3.1.1'):
+            self.assertEqual(utils.dkron_binary_version(), (3, 1, 1))
+
+        utils.dkron_binary_version.cache_clear()
+        with override_settings(DKRON_VERSION='4.1.1-fork1'):
+            self.assertEqual(utils.dkron_binary_version(), (4, 1, 1))
+
+        utils.dkron_binary_version.cache_clear()
+        with override_settings(DKRON_VERSION='prefixed-4.1.2-fork1'):
+            self.assertEqual(utils.dkron_binary_version(), (4, 1, 2))
+
+        utils.dkron_binary_version.cache_clear()
+        with override_settings(DKRON_VERSION='4.1-bad'):
+            self.assertEqual(utils.dkron_binary_version(), utils.UNKNOWN_DKRON_VERSION)
