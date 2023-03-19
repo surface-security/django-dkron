@@ -8,7 +8,6 @@ def data_fix(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     replaces = [
