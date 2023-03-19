@@ -27,6 +27,7 @@ class Test(TestCase):
     def setUp(self):
         # reset cached helpers
         utils.dkron_url.cache_clear()
+        utils.dkron_binary_version.cache_clear()
         utils.api_url.cache_clear()
         utils.namespace.cache_clear()
         utils.namespace_prefix.cache_clear()
@@ -436,35 +437,40 @@ class Test(TestCase):
     @mock.patch('time.time', return_value=1)
     @mock.patch('requests.post')
     def test_run_async(self, mp, tp, job_prefix=''):
+        expected_mock_call = mock.call(
+            'http://dkron/v1/jobs',
+            json={
+                'name': f'{job_prefix}tmp_somecommand_1',
+                'tags': {'label': 'testapp:1'},
+                'schedule': '@manually',
+                'executor_config': {'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'},
+                'metadata': {'temp': 'true'},
+                'disabled': False,
+                'executor': 'shell',
+            },
+            params={'runoncreate': 'true'},
+        )
+        expected_return = ('tmp_somecommand_1', f'/dkron/proxy/ui/#/jobs/{job_prefix}tmp_somecommand_1/show/executions')
+
         mpp = mock.MagicMock()
         mp.return_value = mpp
         # Because of the way mock attributes are stored you can’t directly attach a PropertyMock to a mock object
         # https://docs.python.org/3/library/unittest.mock.html#raising-exceptions-on-attribute-access
         type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
         with mock.patch('django.utils.timezone.now', return_value=timezone.make_aware(timezone.datetime(2023, 2, 7))):
+            with override_settings(DKRON_VERSION='3.2.2'):
+                x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
+            mp.assert_has_calls([expected_mock_call])
+            self.assertEqual(x, expected_return)
+
+            mp.reset_mock()
+            expected_mock_call.kwargs['json']['schedule'] = '@at 2023-02-07T00:00:05+00:00'
+            expected_mock_call.kwargs['params'] = {}
+            type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
+            utils.dkron_binary_version.cache_clear()
             x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
-        mp.assert_has_calls(
-            (
-                mock.call(
-                    JOBS_URL,
-                    json=self._job_template(
-                        {
-                            'name': f'{job_prefix}tmp_somecommand_1',
-                            'schedule': '@at 2023-02-07T00:00:05+00:00',
-                            'executor_config': {
-                                'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'
-                            },
-                            'metadata': {'temp': 'true'},
-                        },
-                        keys_to_drop=['retries', 'parent_job'],
-                    ),
-                ),
-            )
-        )
-        self.assertEqual(
-            x,
-            ('tmp_somecommand_1', f'/dkron/proxy/ui/#/jobs/{job_prefix}tmp_somecommand_1/show/executions'),
-        )
+            mp.assert_has_calls([expected_mock_call])
+            self.assertEqual(x, expected_return)
 
     @mock.patch('after_response.decorators.AFTER_RESPONSE_IMMEDIATE', new_callable=mock.PropertyMock, return_value=True)
     @mock.patch('dkron.utils.requests')
@@ -587,16 +593,14 @@ class Test(TestCase):
             f.write(b'1')
 
         with mock.patch('tempfile.mkdtemp', return_value=tmp):
-            with override_settings(DKRON_VERSION='3.1.1'):
-                utils.dkron_binary_version.cache_clear()
-                management.call_command('run_dkron', stdout=out, stderr=err)
-                self.assertEqual(exec_mock.call_count, 1)
-                exec_args = exec_mock.call_args_list[0][0][1]
-                self.assertIn('--webhook-url', exec_args)
-                opt_i = exec_args.index('--webhook-url')
-                self.assertEqual(
-                    exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload']
-                )
+            # using default version of 3.1.10
+            management.call_command('run_dkron', stdout=out, stderr=err)
+            self.assertEqual(exec_mock.call_count, 1)
+            exec_args = exec_mock.call_args_list[0][0][1]
+            self.assertIn('--webhook-url', exec_args)
+            opt_i = exec_args.index('--webhook-url')
+            self.assertEqual(exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload'])
+
             exec_mock.reset_mock()
             with override_settings(DKRON_VERSION='3.2.1'):
                 utils.dkron_binary_version.cache_clear()
