@@ -55,7 +55,6 @@ class Command(LogBaseCommand):
         return str(exe_path), str(bin_dir)
 
     def handle(self, *_, **options):
-        # TODO: check if there's any shutdown we should care before execv()
         exe_path, bin_dir = self.download_dkron()
 
         args = [exe_path, 'agent']

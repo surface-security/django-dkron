@@ -294,7 +294,6 @@ except ImportError:
 def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
     final_command = f'python ./manage.py {command}'
 
-    # FIXME code very likely to NOT work in some cases :P
     if args:
         final_command += ' ' + ' '.join(map(str, args))
     if kwargs:
