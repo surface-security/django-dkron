@@ -1,9 +1,11 @@
 from collections import defaultdict
 import logging
+import platform
 import time
 from typing import Iterator, Literal, Optional, Union
 import requests
 from functools import lru_cache
+import re
 
 from django.conf import settings
 from django.core.management import call_command
@@ -12,6 +14,8 @@ from django.utils import timezone
 from dkron import models
 
 logger = logging.getLogger(__name__)
+
+UNKNOWN_DKRON_VERSION = (9999, 9, 9)
 
 
 class DkronException(Exception):
@@ -46,6 +50,58 @@ def namespace_prefix():
     if not k:
         return ''
     return f'{k}_'
+
+
+def dkron_binary_download_url():
+    """
+    Returns a tuple with (dkron binary download URL, system type, machine type)
+    """
+
+    # this needs to map platform to the filenames used by dkron (goreleaser):
+    #
+    # docker run --rm fopina/wine-python:3 -c 'import platform;print(platform.system(),platform.machine())'
+    # Windows AMD64
+    # python -c 'import platform;print(platform.system(),platform.machine())'
+    # Darwin x86_64
+    # docker run --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+    # Linux x86_64
+    # docker run --platform linux/arm64 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+    # Linux aarch64
+    # docker run --platform linux/arm/v7 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+    # Linux armv7l
+
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    if 'arm' in machine or 'aarch' in machine:
+        if '64' in machine:
+            machine = 'arm64'
+        else:
+            machine = 'armv7'
+    else:
+        machine = 'amd64'
+
+    dl_url = settings.DKRON_DOWNLOAD_URL_TEMPLATE.format(
+        version=settings.DKRON_VERSION,
+        system=system,
+        machine=machine,
+    )
+
+    return dl_url, system, machine
+
+
+@lru_cache
+def dkron_binary_version():
+    """
+    Return version of dkron binary in settings (based on DKRON_VERSION) as a standard version tuple
+    """
+    m = re.match(r'.*(\d+)\.(\d+)\.(\d+)', settings.DKRON_VERSION)
+    if m:
+        return tuple(map(int, m.groups()))
+    logger.warning(
+        'unable to identify dkron version from DKRON_VERSION="%s" - handling it as latest', settings.DKRON_VERSION
+    )
+    return UNKNOWN_DKRON_VERSION
 
 
 def add_namespace(job_name):
