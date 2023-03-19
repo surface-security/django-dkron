@@ -6,6 +6,8 @@ from typing import Iterator, Literal, Optional, Union
 import requests
 from functools import lru_cache
 import re
+import json
+import base64
 
 from django.conf import settings
 from django.core.management import call_command
@@ -282,36 +284,20 @@ try:
     import after_response
 
     @after_response.enable
-    def __run_async(command, *args, **kwargs) -> str:
-        return call_command(command, *args, **kwargs)
+    def __run_async(_command, *args, **kwargs) -> str:
+        return call_command(_command, *args, **kwargs)
 
 except ImportError:
 
-    def __run_async(command, *args, **kwargs):
+    def __run_async(_command, *args, **kwargs):
         raise DkronException('dkron is down and after_response is not installed')
 
 
-def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
-    final_command = f'python ./manage.py {command}'
+def __run_async_dkron(_command, *args, **kwargs) -> tuple[str, str]:
+    arguments = base64.b64encode(json.dumps({'args': args, 'kwargs': kwargs}).encode()).decode()
+    final_command = f'python ./manage.py run_dkron_async_command {_command} {arguments}'
 
-    if args:
-        final_command += ' ' + ' '.join(map(str, args))
-    if kwargs:
-        for k in kwargs:
-            val = kwargs[k]
-            k = k.replace("_", "-")
-
-            if isinstance(val, bool):
-                if val is True:
-                    final_command += f' --{k}'
-            else:
-                if isinstance(val, (list, tuple)):
-                    for v in val:
-                        final_command += f' --{k} {v}'
-                else:
-                    final_command += f' --{k} {val}'
-
-    name = f'tmp_{command}_{time.time():.0f}'
+    name = f'tmp_{_command}_{time.time():.0f}'
 
     if dkron_binary_version() >= (3, 2, 2):
         # runoncreate was turned into asynchronous in https://github.com/distribworks/dkron/pull/1269
@@ -345,9 +331,9 @@ def job_executions(job_name):
     return f'{settings.DKRON_PATH}#/jobs/{add_namespace(job_name)}/show/executions'
 
 
-def run_async(command, *args, **kwargs) -> Union[tuple[str, str], str]:
+def run_async(_command, *args, **kwargs) -> Union[tuple[str, str], str]:
     try:
-        return __run_async_dkron(command, *args, **kwargs)
+        return __run_async_dkron(_command, *args, **kwargs)
     except requests.ConnectionError:
         # if dkron not available, use after_response
-        return __run_async.after_response(command, *args, **kwargs)
+        return __run_async.after_response(_command, *args, **kwargs)

@@ -443,7 +443,9 @@ class Test(TestCase):
                 'name': f'{job_prefix}tmp_somecommand_1',
                 'tags': {'label': 'testapp:1'},
                 'schedule': '@manually',
-                'executor_config': {'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'},
+                'executor_config': {
+                    'command': 'python ./manage.py run_dkron_async_command somecommand eyJhcmdzIjogWyJhcmcxIl0sICJrd2FyZ3MiOiB7Imt3YXJnIjogInZhbHVlIiwgImVuYWJsZSI6IHRydWV9fQ=='
+                },
                 'metadata': {'temp': 'true'},
                 'disabled': False,
                 'executor': 'shell',

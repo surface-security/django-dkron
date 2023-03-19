@@ -1,5 +1,9 @@
+from io import StringIO
 from unittest import mock
 from django.test import TestCase, override_settings
+from django.core.management import call_command
+import json
+import base64
 
 from dkron import utils
 
@@ -63,3 +67,10 @@ class Test(TestCase):
         utils.dkron_binary_version.cache_clear()
         with override_settings(DKRON_VERSION='4.1-bad'):
             self.assertEqual(utils.dkron_binary_version(), utils.UNKNOWN_DKRON_VERSION)
+
+    @mock.patch('dkron.management.commands.run_dkron_async_command.call_command')
+    def test_run_async_command(self, cc_mock):
+        out = StringIO()
+        args = base64.b64encode(json.dumps({'kwargs': {'command': 'wtv'}}).encode()).decode()
+        call_command('run_dkron_async_command', 'shell', args, stdout=out)
+        cc_mock.assert_called_once_with('shell', command='wtv', stdout=out, stderr=None)
