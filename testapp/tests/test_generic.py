@@ -18,6 +18,9 @@ from notifications import models as notify_models
 from dkron import admin, models, utils
 from dkron.apps import DkronConfig
 
+PROXY_VIEW = 'dkron:proxy'
+JOBS_URL = 'http://dkron/v1/jobs'
+
 
 @override_settings(DKRON_PATH='/dkron/proxy/ui/', DKRON_URL='http://dkron')
 class Test(TestCase):
@@ -39,6 +42,22 @@ class Test(TestCase):
             content_type=auth_models.ContentType.objects.get_for_model(models.Job), codename=codename
         )
 
+    def _job_template(self, overrides, keys_to_drop=[]):
+        job = {
+            'tags': {'label': 'testapp:1'},
+            'metadata': {'cron': 'auto'},
+            'schedule': '',
+            'executor_config': {'shell': 'false', 'command': 'echo test'},
+            'disabled': False,
+            'executor': 'shell',
+            'retries': 0,
+            'parent_job': None,
+        }
+        job.update(overrides)
+        for k in keys_to_drop:
+            del job[k]
+        return job
+
     @override_settings()
     def test_apps(self):
         del settings.DKRON_URL
@@ -48,26 +67,28 @@ class Test(TestCase):
         self.assertEqual(settings.DKRON_URL, 'http://localhost:8888')
 
     def test_auth(self):
-        r = self.client.get(reverse('dkron:auth'))
+        DKRON_AUTH = reverse('dkron:auth')
+
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 401)
 
         self._login()
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 403)
 
         self.user.is_superuser = True
         self.user.save()
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 200)
 
         self.user.is_superuser = False
         self.user.is_staff = True
         self.user.save()
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 403)
 
         self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 200)
 
     def test_resync_command(self):
@@ -107,18 +128,13 @@ class Test(TestCase):
             mp.return_value = mock.MagicMock(status_code=201)
             utils.sync_job(j)
             mp.assert_called_once_with(
-                'http://dkron/v1/jobs',
-                json={
-                    'name': f'{job_prefix}job1',
-                    'tags': {'label': 'testapp:1'},
-                    'metadata': {'cron': 'auto'},
-                    'schedule': '',
-                    'parent_job': None,
-                    'executor_config': {'shell': 'false', 'command': ''},
-                    'disabled': False,
-                    'executor': 'shell',
-                    'retries': 0,
-                },
+                JOBS_URL,
+                json=self._job_template(
+                    {
+                        'name': f'{job_prefix}job1',
+                        'executor_config': {'shell': 'false', 'command': ''},
+                    }
+                ),
             )
 
             j.schedule = '@every 1h'
@@ -128,18 +144,14 @@ class Test(TestCase):
             mp.reset_mock()
             utils.sync_job('job1')
             mp.assert_called_once_with(
-                'http://dkron/v1/jobs',
-                json={
-                    'name': f'{job_prefix}job1',
-                    'tags': {'label': 'testapp:1'},
-                    'metadata': {'cron': 'auto'},
-                    'schedule': '@every 1h',
-                    'executor_config': {'shell': 'false', 'command': 'echo test'},
-                    'disabled': True,
-                    'executor': 'shell',
-                    'parent_job': None,
-                    'retries': 0,
-                },
+                JOBS_URL,
+                json=self._job_template(
+                    {
+                        'name': f'{job_prefix}job1',
+                        'schedule': '@every 1h',
+                        'disabled': True,
+                    }
+                ),
             )
 
             j.use_shell = True
@@ -148,18 +160,16 @@ class Test(TestCase):
             mp.reset_mock()
             utils.sync_job('job1')
             mp.assert_called_once_with(
-                'http://dkron/v1/jobs',
-                json={
-                    'name': f'{job_prefix}job1',
-                    'tags': {'label': 'testapp:1'},
-                    'metadata': {'cron': 'auto'},
-                    'schedule': '@manually',
-                    'executor_config': {'shell': 'true', 'command': 'echo test'},
-                    'disabled': True,
-                    'executor': 'shell',
-                    'parent_job': f'{job_prefix}other',
-                    'retries': 0,
-                },
+                JOBS_URL,
+                json=self._job_template(
+                    {
+                        'name': f'{job_prefix}job1',
+                        'schedule': '@manually',
+                        'parent_job': f'{job_prefix}other',
+                        'disabled': True,
+                        'executor_config': {'shell': 'true', 'command': 'echo test'},
+                    }
+                ),
             )
 
             mp.reset_mock()
@@ -174,13 +184,13 @@ class Test(TestCase):
         with mock.patch('requests.delete') as mp:
             mp.return_value = mock.MagicMock(status_code=200)
             utils.delete_job(j)
-            mp.assert_called_once_with(f'http://dkron/v1/jobs/{job_prefix}job1')
+            mp.assert_called_once_with(f'{JOBS_URL}/{job_prefix}job1')
 
             mp.reset_mock()
             mp.return_value = mock.MagicMock(status_code=500, text='Whatever')
             with self.assertRaisesMessage(utils.DkronException, '') as exc:
                 utils.delete_job('job1')
-            mp.assert_called_once_with(f'http://dkron/v1/jobs/{job_prefix}job1')
+            mp.assert_called_once_with(f'{JOBS_URL}/{job_prefix}job1')
             self.assertEqual(exc.exception.code, 500)
             self.assertEqual(exc.exception.message, 'Whatever')
 
@@ -201,7 +211,7 @@ class Test(TestCase):
 
         with mock.patch('dkron.utils.sync_job') as mp2, mock.patch('dkron.utils.delete_job') as mp3:
             el = next(it)
-            mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
+            mp1.assert_called_once_with(JOBS_URL, params={'metadata[cron]': 'auto'})
             self.assertEqual(('job1', 'u', None), el)
             mp2.assert_called_once_with(j1, jobs[0])
             mp2.reset_mock()
@@ -436,16 +446,18 @@ class Test(TestCase):
         mp.assert_has_calls(
             (
                 mock.call(
-                    'http://dkron/v1/jobs',
-                    json={
-                        'name': f'{job_prefix}tmp_somecommand_1',
-                        'tags': {'label': 'testapp:1'},
-                        'schedule': '@at 2023-02-07T00:00:05+00:00',
-                        'executor_config': {'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'},
-                        'metadata': {'temp': 'true'},
-                        'disabled': False,
-                        'executor': 'shell',
-                    },
+                    JOBS_URL,
+                    json=self._job_template(
+                        {
+                            'name': f'{job_prefix}tmp_somecommand_1',
+                            'schedule': '@at 2023-02-07T00:00:05+00:00',
+                            'executor_config': {
+                                'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'
+                            },
+                            'metadata': {'temp': 'true'},
+                        },
+                        keys_to_drop=['retries', 'parent_job'],
+                    ),
                 ),
             )
         )
@@ -601,22 +613,22 @@ class Test(TestCase):
     def test_proxy_auth(self, mp1):
         self.user.is_superuser = True
         self.user.save()
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
 
         mp1.return_value = mock.MagicMock(content='', status_code=202)
         self._login()
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(202, r.status_code)
 
         self.user.is_superuser = False
         self.user.is_staff = True
         self.user.save()
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
 
         self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(202, r.status_code)
 
     @mock.patch('requests.request')
@@ -626,27 +638,27 @@ class Test(TestCase):
         self._login()
 
         mp1.return_value = mock.MagicMock(content='raw content', status_code=202)
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(202, r.status_code)
         self.assertEqual(b'raw content', r.content)
 
         mp1.return_value = mock.MagicMock(
             content='raw content', status_code=302, headers={'Location': 'whatever', 'X-Custom': 'untouched'}
         )
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
         self.assertEqual(b'raw content', r.content)
         # relative path appended
-        self.assertEqual(reverse('dkron:proxy') + 'whatever', r.headers['location'])
+        self.assertEqual(reverse(PROXY_VIEW) + 'whatever', r.headers['location'])
         # non-specific header remains untouched
         self.assertEqual('untouched', r.headers['x-custom'])
 
         mp1.return_value = mock.MagicMock(
             content='', status_code=302, headers={'Location': '/whatever', 'Content-Encoding': 'invalid'}
         )
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
         # leading / is trimmed
-        self.assertEqual(reverse('dkron:proxy') + 'whatever', r.headers['location'])
+        self.assertEqual(reverse(PROXY_VIEW) + 'whatever', r.headers['location'])
         # some headers from upstream are dropped
         self.assertIsNone(r.headers.get('Content-Encoding'))
