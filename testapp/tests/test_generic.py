@@ -18,12 +18,16 @@ from notifications import models as notify_models
 from dkron import admin, models, utils
 from dkron.apps import DkronConfig
 
+PROXY_VIEW = 'dkron:proxy'
+JOBS_URL = 'http://dkron/v1/jobs'
+
 
 @override_settings(DKRON_PATH='/dkron/proxy/ui/', DKRON_URL='http://dkron')
 class Test(TestCase):
     def setUp(self):
         # reset cached helpers
         utils.dkron_url.cache_clear()
+        utils.dkron_binary_version.cache_clear()
         utils.api_url.cache_clear()
         utils.namespace.cache_clear()
         utils.namespace_prefix.cache_clear()
@@ -39,6 +43,22 @@ class Test(TestCase):
             content_type=auth_models.ContentType.objects.get_for_model(models.Job), codename=codename
         )
 
+    def _job_template(self, overrides, keys_to_drop=[]):
+        job = {
+            'tags': {'label': 'testapp:1'},
+            'metadata': {'cron': 'auto'},
+            'schedule': '',
+            'executor_config': {'shell': 'false', 'command': 'echo test'},
+            'disabled': False,
+            'executor': 'shell',
+            'retries': 0,
+            'parent_job': None,
+        }
+        job.update(overrides)
+        for k in keys_to_drop:
+            del job[k]
+        return job
+
     @override_settings()
     def test_apps(self):
         del settings.DKRON_URL
@@ -48,26 +68,28 @@ class Test(TestCase):
         self.assertEqual(settings.DKRON_URL, 'http://localhost:8888')
 
     def test_auth(self):
-        r = self.client.get(reverse('dkron:auth'))
+        DKRON_AUTH = reverse('dkron:auth')
+
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 401)
 
         self._login()
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 403)
 
         self.user.is_superuser = True
         self.user.save()
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 200)
 
         self.user.is_superuser = False
         self.user.is_staff = True
         self.user.save()
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 403)
 
         self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
-        r = self.client.get(reverse('dkron:auth'))
+        r = self.client.get(DKRON_AUTH)
         self.assertEqual(r.status_code, 200)
 
     def test_resync_command(self):
@@ -107,18 +129,13 @@ class Test(TestCase):
             mp.return_value = mock.MagicMock(status_code=201)
             utils.sync_job(j)
             mp.assert_called_once_with(
-                'http://dkron/v1/jobs',
-                json={
-                    'name': f'{job_prefix}job1',
-                    'tags': {'label': 'testapp:1'},
-                    'metadata': {'cron': 'auto'},
-                    'schedule': '',
-                    'parent_job': None,
-                    'executor_config': {'shell': 'false', 'command': ''},
-                    'disabled': False,
-                    'executor': 'shell',
-                    'retries': 0,
-                },
+                JOBS_URL,
+                json=self._job_template(
+                    {
+                        'name': f'{job_prefix}job1',
+                        'executor_config': {'shell': 'false', 'command': ''},
+                    }
+                ),
             )
 
             j.schedule = '@every 1h'
@@ -128,18 +145,14 @@ class Test(TestCase):
             mp.reset_mock()
             utils.sync_job('job1')
             mp.assert_called_once_with(
-                'http://dkron/v1/jobs',
-                json={
-                    'name': f'{job_prefix}job1',
-                    'tags': {'label': 'testapp:1'},
-                    'metadata': {'cron': 'auto'},
-                    'schedule': '@every 1h',
-                    'executor_config': {'shell': 'false', 'command': 'echo test'},
-                    'disabled': True,
-                    'executor': 'shell',
-                    'parent_job': None,
-                    'retries': 0,
-                },
+                JOBS_URL,
+                json=self._job_template(
+                    {
+                        'name': f'{job_prefix}job1',
+                        'schedule': '@every 1h',
+                        'disabled': True,
+                    }
+                ),
             )
 
             j.use_shell = True
@@ -148,18 +161,16 @@ class Test(TestCase):
             mp.reset_mock()
             utils.sync_job('job1')
             mp.assert_called_once_with(
-                'http://dkron/v1/jobs',
-                json={
-                    'name': f'{job_prefix}job1',
-                    'tags': {'label': 'testapp:1'},
-                    'metadata': {'cron': 'auto'},
-                    'schedule': '@manually',
-                    'executor_config': {'shell': 'true', 'command': 'echo test'},
-                    'disabled': True,
-                    'executor': 'shell',
-                    'parent_job': f'{job_prefix}other',
-                    'retries': 0,
-                },
+                JOBS_URL,
+                json=self._job_template(
+                    {
+                        'name': f'{job_prefix}job1',
+                        'schedule': '@manually',
+                        'parent_job': f'{job_prefix}other',
+                        'disabled': True,
+                        'executor_config': {'shell': 'true', 'command': 'echo test'},
+                    }
+                ),
             )
 
             mp.reset_mock()
@@ -174,13 +185,13 @@ class Test(TestCase):
         with mock.patch('requests.delete') as mp:
             mp.return_value = mock.MagicMock(status_code=200)
             utils.delete_job(j)
-            mp.assert_called_once_with(f'http://dkron/v1/jobs/{job_prefix}job1')
+            mp.assert_called_once_with(f'{JOBS_URL}/{job_prefix}job1')
 
             mp.reset_mock()
             mp.return_value = mock.MagicMock(status_code=500, text='Whatever')
             with self.assertRaisesMessage(utils.DkronException, '') as exc:
                 utils.delete_job('job1')
-            mp.assert_called_once_with(f'http://dkron/v1/jobs/{job_prefix}job1')
+            mp.assert_called_once_with(f'{JOBS_URL}/{job_prefix}job1')
             self.assertEqual(exc.exception.code, 500)
             self.assertEqual(exc.exception.message, 'Whatever')
 
@@ -201,7 +212,7 @@ class Test(TestCase):
 
         with mock.patch('dkron.utils.sync_job') as mp2, mock.patch('dkron.utils.delete_job') as mp3:
             el = next(it)
-            mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
+            mp1.assert_called_once_with(JOBS_URL, params={'metadata[cron]': 'auto'})
             self.assertEqual(('job1', 'u', None), el)
             mp2.assert_called_once_with(j1, jobs[0])
             mp2.reset_mock()
@@ -426,33 +437,42 @@ class Test(TestCase):
     @mock.patch('time.time', return_value=1)
     @mock.patch('requests.post')
     def test_run_async(self, mp, tp, job_prefix=''):
+        expected_mock_call = mock.call(
+            'http://dkron/v1/jobs',
+            json={
+                'name': f'{job_prefix}tmp_somecommand_1',
+                'tags': {'label': 'testapp:1'},
+                'schedule': '@manually',
+                'executor_config': {
+                    'command': 'python ./manage.py run_dkron_async_command somecommand eyJhcmdzIjogWyJhcmcxIl0sICJrd2FyZ3MiOiB7Imt3YXJnIjogInZhbHVlIiwgImVuYWJsZSI6IHRydWV9fQ=='
+                },
+                'metadata': {'temp': 'true'},
+                'disabled': False,
+                'executor': 'shell',
+            },
+            params={'runoncreate': 'true'},
+        )
+        expected_return = ('tmp_somecommand_1', f'/dkron/proxy/ui/#/jobs/{job_prefix}tmp_somecommand_1/show/executions')
+
         mpp = mock.MagicMock()
         mp.return_value = mpp
         # Because of the way mock attributes are stored you can’t directly attach a PropertyMock to a mock object
         # https://docs.python.org/3/library/unittest.mock.html#raising-exceptions-on-attribute-access
         type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
         with mock.patch('django.utils.timezone.now', return_value=timezone.make_aware(timezone.datetime(2023, 2, 7))):
+            with override_settings(DKRON_VERSION='3.2.2'):
+                x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
+            mp.assert_has_calls([expected_mock_call])
+            self.assertEqual(x, expected_return)
+
+            mp.reset_mock()
+            expected_mock_call.kwargs['json']['schedule'] = '@at 2023-02-07T00:00:05+00:00'
+            expected_mock_call.kwargs['params'] = {}
+            type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
+            utils.dkron_binary_version.cache_clear()
             x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
-        mp.assert_has_calls(
-            (
-                mock.call(
-                    'http://dkron/v1/jobs',
-                    json={
-                        'name': f'{job_prefix}tmp_somecommand_1',
-                        'tags': {'label': 'testapp:1'},
-                        'schedule': '@at 2023-02-07T00:00:05+00:00',
-                        'executor_config': {'command': 'python ./manage.py somecommand arg1 --kwarg value --enable'},
-                        'metadata': {'temp': 'true'},
-                        'disabled': False,
-                        'executor': 'shell',
-                    },
-                ),
-            )
-        )
-        self.assertEqual(
-            x,
-            ('tmp_somecommand_1', f'/dkron/proxy/ui/#/jobs/{job_prefix}tmp_somecommand_1/show/executions'),
-        )
+            mp.assert_has_calls([expected_mock_call])
+            self.assertEqual(x, expected_return)
 
     @mock.patch('after_response.decorators.AFTER_RESPONSE_IMMEDIATE', new_callable=mock.PropertyMock, return_value=True)
     @mock.patch('dkron.utils.requests')
@@ -526,7 +546,7 @@ class Test(TestCase):
         DKRON_NODE_NAME='whatever',
     )
     @mock.patch('os.execv')
-    def test_run_dkron(self, exec_mock):
+    def test_run_dkron_server(self, exec_mock):
         err = StringIO()
         out = StringIO()
 
@@ -558,26 +578,63 @@ class Test(TestCase):
             ],
         )
 
+    @override_settings(
+        DKRON_SERVER=True,
+        DKRON_TOKEN='x',
+        DKRON_WEBHOOK_URL='https://whatever',
+    )
+    @mock.patch('os.execv')
+    def test_run_dkron_webhook(self, exec_mock):
+        err = StringIO()
+        out = StringIO()
+
+        # skip download
+        tmp = tempfile.mkdtemp()
+        exe_name = os.path.join(tmp, 'dkron.exe' if platform.system() == 'Windows' else 'dkron')
+        with open(exe_name, 'wb') as f:
+            f.write(b'1')
+
+        with mock.patch('tempfile.mkdtemp', return_value=tmp):
+            # using default version of 3.1.10
+            management.call_command('run_dkron', stdout=out, stderr=err)
+            self.assertEqual(exec_mock.call_count, 1)
+            exec_args = exec_mock.call_args_list[0][0][1]
+            self.assertIn('--webhook-url', exec_args)
+            opt_i = exec_args.index('--webhook-url')
+            self.assertEqual(exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload'])
+
+            exec_mock.reset_mock()
+            with override_settings(DKRON_VERSION='3.2.1'):
+                utils.dkron_binary_version.cache_clear()
+                management.call_command('run_dkron', stdout=out, stderr=err)
+                self.assertEqual(exec_mock.call_count, 1)
+                exec_args = exec_mock.call_args_list[0][0][1]
+                self.assertIn('--webhook-endpoint', exec_args)
+                opt_i = exec_args.index('--webhook-endpoint')
+                self.assertEqual(
+                    exec_args[opt_i : opt_i + 3], ['--webhook-endpoint', 'https://whatever', '--webhook-payload']
+                )
+
     @mock.patch('requests.request')
     def test_proxy_auth(self, mp1):
         self.user.is_superuser = True
         self.user.save()
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
 
         mp1.return_value = mock.MagicMock(content='', status_code=202)
         self._login()
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(202, r.status_code)
 
         self.user.is_superuser = False
         self.user.is_staff = True
         self.user.save()
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
 
         self.user.user_permissions.add(self._job_perm('can_use_dashboard'))
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(202, r.status_code)
 
     @mock.patch('requests.request')
@@ -587,139 +644,27 @@ class Test(TestCase):
         self._login()
 
         mp1.return_value = mock.MagicMock(content='raw content', status_code=202)
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(202, r.status_code)
         self.assertEqual(b'raw content', r.content)
 
         mp1.return_value = mock.MagicMock(
             content='raw content', status_code=302, headers={'Location': 'whatever', 'X-Custom': 'untouched'}
         )
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
         self.assertEqual(b'raw content', r.content)
         # relative path appended
-        self.assertEqual(reverse('dkron:proxy') + 'whatever', r.headers['location'])
+        self.assertEqual(reverse(PROXY_VIEW) + 'whatever', r.headers['location'])
         # non-specific header remains untouched
         self.assertEqual('untouched', r.headers['x-custom'])
 
         mp1.return_value = mock.MagicMock(
             content='', status_code=302, headers={'Location': '/whatever', 'Content-Encoding': 'invalid'}
         )
-        r = self.client.get(reverse('dkron:proxy'))
+        r = self.client.get(reverse(PROXY_VIEW))
         self.assertEqual(302, r.status_code)
         # leading / is trimmed
-        self.assertEqual(reverse('dkron:proxy') + 'whatever', r.headers['location'])
+        self.assertEqual(reverse(PROXY_VIEW) + 'whatever', r.headers['location'])
         # some headers from upstream are dropped
         self.assertIsNone(r.headers.get('Content-Encoding'))
-
-
-@override_settings(DKRON_PATH='/dkron/proxy/ui/', DKRON_URL='http://dkron', DKRON_NAMESPACE='wtv')
-class TestNamespace(Test):
-    def test_sync_job(self, job_prefix=''):
-        super().test_sync_job(job_prefix='wtv_')
-
-    def test_delete_job(self, job_prefix=''):
-        super().test_delete_job(job_prefix='wtv_')
-
-    @mock.patch('requests.get')
-    def test_resync_jobs(self, mp1):
-        j1 = models.Job.objects.create(name='job1')
-        j2 = models.Job.objects.create(name='job2')
-        jobs = [
-            {'name': 'wtv_job1', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
-            {'name': 'wtv_job3', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
-            # ignore, not wtv namespace
-            {'name': 'ign_job4', 'tags': {'label': 'testapp'}, 'metadata': {'cron': 'auto'}},
-            # skipped, wrong label
-            {'name': 'wtv_job5', 'tags': {'label': 'testapp2'}, 'metadata': {'cron': 'auto'}},
-        ]
-        mp1.return_value = mock.MagicMock(status_code=200, json=lambda: jobs)
-        it = utils.resync_jobs()
-
-        with mock.patch('dkron.utils.sync_job') as mp2, mock.patch('dkron.utils.delete_job') as mp3:
-            el = next(it)
-            mp1.assert_called_once_with('http://dkron/v1/jobs', params={'metadata[cron]': 'auto'})
-            self.assertEqual(('job1', 'u', None), el)
-            mp2.assert_called_once_with(j1, jobs[0])
-            mp2.reset_mock()
-
-            mp2.side_effect = utils.DkronException(666, 'looking for d/a/emon')
-            el = next(it)
-            self.assertEqual(('job2', 'u', 'looking for d/a/emon'), el)
-            mp2.assert_called_once_with(j2, False)
-            mp2.reset_mock()
-
-            # no order in a set(), check for both
-            el = next(it)
-            self.assertEqual(('job3', 'd', None), el)
-            mp3.assert_called_once_with('job3')
-            mp3.reset_mock()
-
-            with self.assertRaises(StopIteration):
-                # assert nothing left
-                next(it)
-
-    def test_webhook(self, job_prefix=''):
-        super().test_webhook(job_prefix='wtv_')
-
-    def test_webhook_namespace_mismatch(self):
-        j = models.Job.objects.create(name='job1')
-        self.assertFalse(j.last_run_success)
-
-        r = self.client.post(reverse('dkron_api:webhook'), data='test\njob1\ntrue', content_type='not_form_data')
-        self.assertEqual(r.status_code, 404)
-
-        r = self.client.post(reverse('dkron_api:webhook'), data='test\nwtv_job1\ntrue', content_type='not_form_data')
-        self.assertEqual(r.status_code, 200)
-        j.refresh_from_db()
-        self.assertTrue(j.last_run_success)
-
-    def test_webhook_notify(self, job_prefix=''):
-        super().test_webhook_notify(job_prefix='wtv_')
-
-    def test_run_async(self, job_prefix=''):
-        super().test_run_async(job_prefix='wtv_')
-
-
-class TestOthers(TestCase):
-    @mock.patch('platform.machine')
-    @mock.patch('platform.system')
-    @mock.patch('requests.get')
-    @override_settings(DKRON_BIN_DIR=None)
-    def test_run_dkron_download(self, req_mock, sys_mock, mach_mock):
-        from dkron.management.commands import run_dkron
-        from io import BytesIO
-        import base64
-
-        fake_tar = base64.decodebytes(
-            # tarfile with an empty file
-            b'H4sICJNVO2IAA2EudGFyAEtkoD0wMDAwMzFRANHmZqZg2sAIwocBBUMTI0MzM1MjM0NDBQNDQzNjIwYFAzq4jaG0uCSxCOiUtPyCzLxE3OqAytLS8JgD9QecHgWjYBSMgkEOAKshHuMABgAA'
-        )
-        cmd = run_dkron.Command()
-
-        def _check(system, machine, url):
-            req_mock.reset_mock()
-            sys_mock.return_value = system
-            mach_mock.return_value = machine
-            req_mock.return_value.__enter__.return_value = mock.MagicMock(raw=BytesIO(fake_tar))
-            cmd.download_dkron()
-            req_mock.assert_called_once_with(
-                url,
-                stream=True,
-            )
-
-        _check(
-            'darwin',
-            'x86_64',
-            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_darwin_amd64.tar.gz',
-        )
-        _check(
-            'windows',
-            'AMD64',
-            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_windows_amd64.tar.gz',
-        )
-        _check(
-            'Linux',
-            'aarch64',
-            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_linux_arm64.tar.gz',
-        )

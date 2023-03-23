@@ -1,9 +1,13 @@
 from collections import defaultdict
 import logging
+import platform
 import time
 from typing import Iterator, Literal, Optional, Union
 import requests
 from functools import lru_cache
+import re
+import json
+import base64
 
 from django.conf import settings
 from django.core.management import call_command
@@ -12,6 +16,8 @@ from django.utils import timezone
 from dkron import models
 
 logger = logging.getLogger(__name__)
+
+UNKNOWN_DKRON_VERSION = (9999, 9, 9)
 
 
 class DkronException(Exception):
@@ -46,6 +52,58 @@ def namespace_prefix():
     if not k:
         return ''
     return f'{k}_'
+
+
+def dkron_binary_download_url():
+    """
+    Returns a tuple with (dkron binary download URL, system type, machine type)
+    """
+
+    # this needs to map platform to the filenames used by dkron (goreleaser):
+    #
+    # docker run --rm fopina/wine-python:3 -c 'import platform;print(platform.system(),platform.machine())'
+    # Windows AMD64
+    # python -c 'import platform;print(platform.system(),platform.machine())'
+    # Darwin x86_64
+    # docker run --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+    # Linux x86_64
+    # docker run --platform linux/arm64 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+    # Linux aarch64
+    # docker run --platform linux/arm/v7 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
+    # Linux armv7l
+
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    if 'arm' in machine or 'aarch' in machine:
+        if '64' in machine:
+            machine = 'arm64'
+        else:
+            machine = 'armv7'
+    else:
+        machine = 'amd64'
+
+    dl_url = settings.DKRON_DOWNLOAD_URL_TEMPLATE.format(
+        version=settings.DKRON_VERSION,
+        system=system,
+        machine=machine,
+    )
+
+    return dl_url, system, machine
+
+
+@lru_cache
+def dkron_binary_version():
+    """
+    Return version of dkron binary in settings (based on DKRON_VERSION) as a standard version tuple
+    """
+    m = re.match(r'.*(\d+)\.(\d+)\.(\d+)', settings.DKRON_VERSION)
+    if m:
+        return tuple(map(int, m.groups()))
+    logger.warning(
+        'unable to identify dkron version from DKRON_VERSION="%s" - handling it as latest', settings.DKRON_VERSION
+    )
+    return UNKNOWN_DKRON_VERSION
 
 
 def add_namespace(job_name):
@@ -226,51 +284,41 @@ try:
     import after_response
 
     @after_response.enable
-    def __run_async(command, *args, **kwargs) -> str:
-        return call_command(command, *args, **kwargs)
+    def __run_async(_command, *args, **kwargs) -> str:
+        return call_command(_command, *args, **kwargs)
 
 except ImportError:
 
-    def __run_async(command, *args, **kwargs):
+    def __run_async(_command, *args, **kwargs):
         raise DkronException('dkron is down and after_response is not installed')
 
 
-def __run_async_dkron(command, *args, **kwargs) -> tuple[str, str]:
-    final_command = f'python ./manage.py {command}'
+def __run_async_dkron(_command, *args, **kwargs) -> tuple[str, str]:
+    arguments = base64.b64encode(json.dumps({'args': args, 'kwargs': kwargs}).encode()).decode()
+    final_command = f'python ./manage.py run_dkron_async_command {_command} {arguments}'
 
-    # FIXME code very likely to NOT work in some cases :P
-    if args:
-        final_command += ' ' + ' '.join(map(str, args))
-    if kwargs:
-        for k in kwargs:
-            val = kwargs[k]
-            k = k.replace("_", "-")
+    name = f'tmp_{_command}_{time.time():.0f}'
 
-            if isinstance(val, bool):
-                if val is True:
-                    final_command += f' --{k}'
-            else:
-                if isinstance(val, (list, tuple)):
-                    for v in val:
-                        final_command += f' --{k} {v}'
-                else:
-                    final_command += f' --{k} {val}'
+    if dkron_binary_version() >= (3, 2, 2):
+        # runoncreate was turned into asynchronous in https://github.com/distribworks/dkron/pull/1269
+        schedule = '@manually'
+        params = {'runoncreate': 'true'}
+    else:
+        schedule = f'@at {(timezone.now() + timezone.timedelta(seconds=5)).isoformat()}'
+        params = {}
 
-    name = f'tmp_{command}_{time.time():.0f}'
     r = _post(
         'jobs',
         json={
             'name': add_namespace(name),
-            'schedule': f'@at {(timezone.now() + timezone.timedelta(seconds=5)).isoformat()}',
+            'schedule': schedule,
             'executor': 'shell',
             'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
             'metadata': {'temp': 'true'},
             'disabled': False,
             'executor_config': {'command': final_command},
         },
-        # FIXME: workaround for https://github.com/surface-security/django-dkron/issues/18
-        # if dkron fixes it, restore this (either based on dkron version or ignore the bug for old version...)
-        # params={'runoncreate': 'true'},
+        params=params,
     )
 
     if r.status_code != 201:
@@ -283,9 +331,9 @@ def job_executions(job_name):
     return f'{settings.DKRON_PATH}#/jobs/{add_namespace(job_name)}/show/executions'
 
 
-def run_async(command, *args, **kwargs) -> Union[tuple[str, str], str]:
+def run_async(_command, *args, **kwargs) -> Union[tuple[str, str], str]:
     try:
-        return __run_async_dkron(command, *args, **kwargs)
+        return __run_async_dkron(_command, *args, **kwargs)
     except requests.ConnectionError:
         # if dkron not available, use after_response
-        return __run_async.after_response(command, *args, **kwargs)
+        return __run_async.after_response(_command, *args, **kwargs)

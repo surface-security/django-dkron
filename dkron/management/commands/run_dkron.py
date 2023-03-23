@@ -5,10 +5,10 @@ import requests
 import shutil
 import tarfile
 from pathlib import Path
-
 from django.conf import settings
 
 from logbasecommand.base import LogBaseCommand
+from dkron import utils
 
 
 class Command(LogBaseCommand):
@@ -31,45 +31,17 @@ class Command(LogBaseCommand):
         )
 
     def download_dkron(self):
-        """
-        this needs to map platform to the filenames used by dkron (goreleaser):
-
-        docker run --rm fopina/wine-python:3 -c 'import platform;print(platform.system(),platform.machine())'
-        Windows AMD64
-        python -c 'import platform;print(platform.system(),platform.machine())'
-        Darwin x86_64
-        docker run --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
-        Linux x86_64
-        docker run --platform linux/arm64 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
-        Linux aarch64
-        docker run --platform linux/arm/v7 --rm python:3-alpine python -c 'import platform;print(platform.system(),platform.machine())'
-        Linux armv7l
-        """
         if settings.DKRON_BIN_DIR is None:
             bin_dir = Path(tempfile.mkdtemp())
         else:
             bin_dir = Path(settings.DKRON_BIN_DIR) / settings.DKRON_VERSION
 
-        system = platform.system().lower()
+        dl_url, system, _ = utils.dkron_binary_download_url()
         exe_path = bin_dir / ('dkron.exe' if system == 'windows' else 'dkron')
-        machine = platform.machine().lower()
-
-        if 'arm' in machine or 'aarch' in machine:
-            if '64' in machine:
-                machine = 'arm64'
-            else:
-                machine = 'armv7'
-        else:
-            machine = 'amd64'
 
         # check if download is required
         if not exe_path.is_file():
             os.makedirs(bin_dir, exist_ok=True)
-            dl_url = settings.DKRON_DOWNLOAD_URL_TEMPLATE.format(
-                version=settings.DKRON_VERSION,
-                system=system,
-                machine=machine,
-            )
             tarball = f'{exe_path}.tar.gz'
             self.log(f'Downloading {dl_url}')
             with requests.get(dl_url, stream=True) as r:
@@ -83,7 +55,6 @@ class Command(LogBaseCommand):
         return str(exe_path), str(bin_dir)
 
     def handle(self, *_, **options):
-        # TODO: check if there's any shutdown we should care before execv()
         exe_path, bin_dir = self.download_dkron()
 
         args = [exe_path, 'agent']
@@ -114,9 +85,10 @@ class Command(LogBaseCommand):
         if settings.DKRON_WORKDIR:
             os.chdir(settings.DKRON_WORKDIR)
         if settings.DKRON_WEBHOOK_URL and settings.DKRON_TOKEN:
+            flag_name = '--webhook-url' if utils.dkron_binary_version() < (3, 2, 0) else '--webhook-endpoint'
             args.extend(
                 [
-                    '--webhook-url',
+                    flag_name,
                     settings.DKRON_WEBHOOK_URL,
                     '--webhook-payload',
                     f'{settings.DKRON_TOKEN}\n{{{{ .JobName }}}}\n{{{{ .Success }}}}',
