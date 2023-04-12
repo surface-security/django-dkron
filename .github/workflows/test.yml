@@ -23,6 +23,21 @@ jobs:
     - name: Style check
       run : tox -e style
 
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.11
+    - name: dependencies
+      working-directory: testapp
+      run: pip install -r requirements.txt
+    - name: migration checks
+      working-directory: testapp
+      run : ./manage.py makemigrations --check
+
   test:
     runs-on: ubuntu-latest
     strategy:
