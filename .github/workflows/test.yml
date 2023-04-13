@@ -55,6 +55,11 @@ jobs:
       run: pip install tox
     - name: Toxit
       run: tox -e py -v
+    
+    - name: Surface tests
+      run: |
+        curl -X POST https://api.github.com/repos/gsilvapt/surface/.github/workflows/run_tests.yml/dispatches \
+        --data '{"ref": "main", "build_tag": "latest", "repository": "'"$GITHUB_REPOSITORY"'" }'
 
     - name: coverage xml
       run: .tox/py/bin/coverage xml
