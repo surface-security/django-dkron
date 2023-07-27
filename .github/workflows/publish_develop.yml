@@ -1,11 +1,12 @@
 # This workflows will upload a Python Package using Twine when a release is created
 # For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
 
-name: publish
+name: publish develop
 
 on:
-  release:
-    types: [created]
+  push:
+    branches:
+      - develop
 
 jobs:
   publish:
@@ -20,6 +21,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install setuptools wheel twine
+    - name: Update package name, version and README
+      run: |
+        sed -i 's/^name = django-dkron$/name = django-dkron-dev/' setup.cfg
+        sed -i "s/^__version__ = .*/__version__ = '0.${{ github.run_number }}'/" dkron/__init__.py
+        echo dev releases from https://github.com/surface-security/django-dkron > README.md
+    - name: Confirm package name changed
+      run: test -n "$(git status --porcelain setup.cfg)"
     - name: Build and publish
       env:
         TWINE_USERNAME: __token__
