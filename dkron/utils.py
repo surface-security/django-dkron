@@ -395,12 +395,12 @@ def get_timezone():
 
 
 def send_sentry_monitor(job: models.Job, status: Literal["in_progress", "ok", "error"]):
-    if not settings.SENTRY_CRON_URL:
+    if not settings.DKRON_SENTRY_CRON_URL:
         return False
 
     try:
         req = requests.post(
-            settings.SENTRY_CRON_URL.replace("<monitor_slug>", job.name),
+            settings.DKRON_SENTRY_CRON_URL.replace("<monitor_slug>", job.name),
             json={
                 "monitor_config": {
                     "schedule": dkron_to_sentry_schedule(job),

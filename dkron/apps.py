@@ -29,7 +29,7 @@ APP_SETTINGS = dict(
     API_AUTH=None,
     # Token used by `run_dkron` for webhook calls into this app
     TOKEN=None,
-    # URL called by dkron webhooks to post job start to this app - passed as `--pre-webhook-url` to dkron, so you need to map `dkron.views.pre_webhook` in your project urls.py and this should be full URL to that route and reachable by dkron. Requires SENTRY_CRON_URL otherwise nothing would happen
+    # URL called by dkron webhooks to post job start to this app - passed as `--pre-webhook-url` to dkron, so you need to map `dkron.views.pre_webhook` in your project urls.py and this should be full URL to that route and reachable by dkron. Requires DKRON_SENTRY_CRON_URL otherwise nothing would happen
     PRE_WEBHOOK_URL=None,
     # URL called by dkron webhooks to post job status to this app - passed as `--webhook-url` to dkron, so you need to map `dkron.views.webhook` in your project urls.py and this should be full URL to that route and reachable by dkron
     WEBHOOK_URL=None,
