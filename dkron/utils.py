@@ -101,8 +101,7 @@ def dkron_binary_version():
     if m:
         return tuple(map(int, m.groups()))
     logger.warning(
-        'unable to identify dkron version from DKRON_VERSION="%s" - handling it as latest',
-        settings.DKRON_VERSION,
+        'unable to identify dkron version from DKRON_VERSION="%s" - handling it as latest', settings.DKRON_VERSION
     )
     return UNKNOWN_DKRON_VERSION
 
@@ -149,9 +148,7 @@ def _delete(path, *a, **b) -> requests.Response:
     return requests.delete(f'{api_url()}{path}', *a, **b)
 
 
-def sync_job(
-    job: Union[str, models.Job], job_update: Optional[Union[bool, dict]] = False
-) -> None:
+def sync_job(job: Union[str, models.Job], job_update: Optional[Union[bool, dict]] = False) -> None:
     """
     :param job: job name or object to be created/updated (without namespace prefix, if any)
     :param job_update: fkin weird variable that can be False for job to be replaced, None to fetch current job and
@@ -172,28 +169,23 @@ def sync_job(
                 job_dict = r.json()
         except Exception:
             # ignore but log for future analysis
-            logger.exception(
-                'fetching job %s (%s) failed', job.name, job.namespaced_name
-            )
+            logger.exception('fetching job %s (%s) failed', job.name, job.namespaced_name)
     elif isinstance(job_update, dict):
         job_dict = job_update
 
-    job_dict.update({
-        'name': job.namespaced_name,
-        'schedule': schedule,
-        'parent_job': parent_job,
-        'executor': 'shell',
-        'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'}
-        if settings.DKRON_JOB_LABEL
-        else {},
-        'metadata': {'cron': 'auto'},
-        'disabled': not job.enabled,
-        'executor_config': {
-            'shell': 'true' if job.use_shell else 'false',
-            'command': job.command,
-        },
-        'retries': job.retries,
-    })
+    job_dict.update(
+        {
+            'name': job.namespaced_name,
+            'schedule': schedule,
+            'parent_job': parent_job,
+            'executor': 'shell',
+            'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
+            'metadata': {'cron': 'auto'},
+            'disabled': not job.enabled,
+            'executor_config': {'shell': 'true' if job.use_shell else 'false', 'command': job.command},
+            'retries': job.retries,
+        }
+    )
     r = _post('jobs', json=job_dict)
     if r.status_code != 201:
         raise DkronException(r.status_code, r.text)
@@ -260,14 +252,10 @@ def resync_jobs() -> Iterator[tuple[str, Literal["u", "d"], Optional[str]]]:
         if not k:
             # wrong namespace
             continue
-        if settings.DKRON_JOB_LABEL and settings.DKRON_JOB_LABEL != y.get(
-            'tags', {}
-        ).get('label', ''):
+        if settings.DKRON_JOB_LABEL and settings.DKRON_JOB_LABEL != y.get('tags', {}).get('label', ''):
             # label for another agent, ignore as well, log warning
             logger.warning(
-                'job %s (%s) matches metadata but it is missing the label - maybe namespacing required?',
-                k,
-                y['name'],
+                'job %s (%s) matches metadata but it is missing the label - maybe namespacing required?', k, y['name']
             )
             continue
         previous_jobs[k] = y
@@ -306,9 +294,7 @@ except ImportError:
 
 
 def __run_async_dkron(_command, *args, **kwargs) -> tuple[str, str]:
-    arguments = base64.b64encode(
-        json.dumps({'args': args, 'kwargs': kwargs}).encode()
-    ).decode()
+    arguments = base64.b64encode(json.dumps({'args': args, 'kwargs': kwargs}).encode()).decode()
     final_command = f'python ./manage.py run_dkron_async_command {_command} {arguments}'
 
     name = f'tmp_{_command}_{time.time():.0f}'
@@ -327,9 +313,7 @@ def __run_async_dkron(_command, *args, **kwargs) -> tuple[str, str]:
             'name': add_namespace(name),
             'schedule': schedule,
             'executor': 'shell',
-            'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'}
-            if settings.DKRON_JOB_LABEL
-            else {},
+            'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
             'metadata': {'temp': 'true'},
             'disabled': False,
             'executor_config': {'command': final_command},
