@@ -419,12 +419,12 @@ def send_sentry_monitor(job: models.Job, status: Literal["in_progress", "ok", "e
             settings.SENTRY_CRON_URL.replace("<monitor_slug>", job.name),
             json={
                 "monitor_config": {
-                    "schedule": dkron_to_sentry_schedule(o),
+                    "schedule": dkron_to_sentry_schedule(job),
                     "checkin_margin": 5,  # TODO: make this configurable
                     "max_runtime": 30,  # TODO: make this configurable
                     "timezone": get_timezone(),
                 },
-                "status": "in_progress",
+                "status": status,
             },
         )
         req.raise_for_status()

@@ -6,6 +6,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import permission_required
+
 from notifications.utils import notify
 from dkron import models, utils
 
@@ -86,7 +87,6 @@ def webhook(request):
                 utils.job_executions(o.name)
             )}|failed>""",
         )
-
     return http.HttpResponse()
 
 
