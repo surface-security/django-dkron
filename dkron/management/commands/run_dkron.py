@@ -1,6 +1,5 @@
 import tempfile
 import os
-import platform
 import requests
 import shutil
 import tarfile
@@ -84,6 +83,16 @@ class Command(LogBaseCommand):
             args.extend(['--join', j])
         if settings.DKRON_WORKDIR:
             os.chdir(settings.DKRON_WORKDIR)
+        if settings.DKRON_PRE_WEBHOOK_URL and settings.DKRON_TOKEN and settings.DKRON_SENTRY_CRON_URL:
+            flag_name = '--pre-webhook-url' if utils.dkron_binary_version() < (3, 2, 0) else '--pre-webhook-endpoint'
+            args.extend(
+                [
+                    flag_name,
+                    settings.DKRON_PRE_WEBHOOK_URL,
+                    '--pre-webhook-payload',
+                    f'{settings.DKRON_TOKEN}\n{{{{ .JobName }}}}',
+                ]
+            )
         if settings.DKRON_WEBHOOK_URL and settings.DKRON_TOKEN:
             flag_name = '--webhook-url' if utils.dkron_binary_version() < (3, 2, 0) else '--webhook-endpoint'
             args.extend(
