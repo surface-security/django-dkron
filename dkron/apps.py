@@ -38,7 +38,7 @@ APP_SETTINGS = dict(
     # node name to be passed to dkron as `--node-name` - defaults to machine hostname
     NODE_NAME=None,
     # Optional Sentry URL used for monitoring jobs. Use placeholder `<monitor_slug>` in URL for job name.
-    DKRON_SENTRY_CRON_URL=None,
+    SENTRY_CRON_URL=None,
 )
 
 
