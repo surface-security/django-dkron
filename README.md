@@ -38,7 +38,7 @@ The following app settings are available for customization (from [dkron/apps.py]
 | DKRON_PRE_WEBHOOK_URL |  | URL called by dkron webhooks to post job start to this app - passed as `--pre-webhook-url` to dkron, so you need to map `dkron.views.pre_webhook` in your project urls.py and this should be full URL to that route and reachable by dkron. Requires SENTRY_CRON_URL otherwise nothing would happen. |
 | DKRON_WEBHOOK_URL |  | URL called by dkron webhooks to post job status to this app - passed as `--webhook-url` to dkron, so you need to map `dkron.views.webhook` in your project urls.py and this should be full URL to that route and reachable by dkron |
 | DKRON_NAMESPACE | | string to be prefixed to each job created by this app in dkron so the same dkron cluster can be used by different apps/instances without conflicting job names (assuming unique namespaces ^^) |
-| SENTRY_CRON_URL | Optional Sentry URL used for monitoring jobs. Use placeholder `<monitor_slug>` in URL for job name. |
+| DKRON_SENTRY_CRON_URL | Optional Sentry URL used for monitoring jobs. Use placeholder `<monitor_slug>` in URL for job name. |
 
 Besides starting the django app (with `./manage.py runserver`, `gunicorn` or similar) also start dkron agent with `./manage.py run_dkron`:
 
