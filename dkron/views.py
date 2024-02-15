@@ -6,7 +6,6 @@ from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import permission_required
-
 from notifications.utils import notify
 from dkron import models, utils
 
@@ -20,6 +19,34 @@ def auth(request):
     # and 403 to display access forbidden
     if not request.user.has_perm('dkron.can_use_dashboard'):
         return http.HttpResponseForbidden()
+    return http.HttpResponse()
+
+
+@csrf_exempt
+def pre_webhook(request):
+    if settings.DKRON_TOKEN is None:
+        return http.HttpResponseNotFound()
+
+    if request.method != 'POST':
+        return http.HttpResponseBadRequest()
+
+    lines = request.body.decode().splitlines()
+    if len(lines) != 2:
+        return http.HttpResponseBadRequest()
+
+    if lines[0] != settings.DKRON_TOKEN:
+        return http.HttpResponseForbidden()
+
+    job_name = utils.trim_namespace(lines[1])
+    if not job_name:
+        return http.HttpResponseNotFound()
+
+    o = models.Job.objects.filter(name=job_name).first()
+    if o is None:
+        return http.HttpResponseNotFound()
+
+    utils.send_sentry_monitor(o, "in_progress")
+
     return http.HttpResponse()
 
 
@@ -49,13 +76,17 @@ def webhook(request):
     o.last_run_success = lines[2] == 'true'
     o.last_run_date = timezone.now()
     o.save()
+
+    utils.send_sentry_monitor(o, "ok" if o.last_run_success else "error")
+
     if not o.last_run_success and o.notify_on_error:
         notify(
             'dkron_failed_job',
-            f''':red-pipeline: dkron job *{o.name}* <{request.build_absolute_uri(
+            f""":red-pipeline: dkron job *{o.name}* <{request.build_absolute_uri(
                 utils.job_executions(o.name)
-            )}|failed>''',
+            )}|failed>""",
         )
+
     return http.HttpResponse()
 
 
@@ -92,31 +123,29 @@ def proxy(request, path=None):
 
     proxy_response = http.HttpResponse(response.content, status=response.status_code)
 
-    excluded_headers = set(
-        [
-            # Hop-by-hop headers
-            # ------------------
-            # Certain response headers should NOT be just tunneled through.  These
-            # are they.  For more info, see:
-            # http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.5.1
-            'connection',
-            'keep-alive',
-            'proxy-authenticate',
-            'proxy-authorization',
-            'te',
-            'trailers',
-            'transfer-encoding',
-            'upgrade',
-            # Although content-encoding is not listed among the hop-by-hop headers,
-            # it can cause trouble as well.  Just let the server set the value as
-            # it should be.
-            'content-encoding',
-            # Since the remote server may or may not have sent the content in the
-            # same encoding as Django will, let Django worry about what the length
-            # should be.
-            'content-length',
-        ]
-    )
+    excluded_headers = set([
+        # Hop-by-hop headers
+        # ------------------
+        # Certain response headers should NOT be just tunneled through.  These
+        # are they.  For more info, see:
+        # http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.5.1
+        'connection',
+        'keep-alive',
+        'proxy-authenticate',
+        'proxy-authorization',
+        'te',
+        'trailers',
+        'transfer-encoding',
+        'upgrade',
+        # Although content-encoding is not listed among the hop-by-hop headers,
+        # it can cause trouble as well.  Just let the server set the value as
+        # it should be.
+        'content-encoding',
+        # Since the remote server may or may not have sent the content in the
+        # same encoding as Django will, let Django worry about what the length
+        # should be.
+        'content-length',
+    ])
     for key, value in response.headers.items():
         if key.lower() in excluded_headers:
             continue
