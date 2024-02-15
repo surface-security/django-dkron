@@ -101,7 +101,8 @@ def dkron_binary_version():
     if m:
         return tuple(map(int, m.groups()))
     logger.warning(
-        'unable to identify dkron version from DKRON_VERSION="%s" - handling it as latest', settings.DKRON_VERSION
+        'unable to identify dkron version from DKRON_VERSION="%s" - handling it as latest',
+        settings.DKRON_VERSION,
     )
     return UNKNOWN_DKRON_VERSION
 
@@ -148,7 +149,9 @@ def _delete(path, *a, **b) -> requests.Response:
     return requests.delete(f'{api_url()}{path}', *a, **b)
 
 
-def sync_job(job: Union[str, models.Job], job_update: Optional[Union[bool, dict]] = False) -> None:
+def sync_job(
+    job: Union[str, models.Job], job_update: Optional[Union[bool, dict]] = False
+) -> None:
     """
     :param job: job name or object to be created/updated (without namespace prefix, if any)
     :param job_update: fkin weird variable that can be False for job to be replaced, None to fetch current job and
@@ -169,23 +172,28 @@ def sync_job(job: Union[str, models.Job], job_update: Optional[Union[bool, dict]
                 job_dict = r.json()
         except Exception:
             # ignore but log for future analysis
-            logger.exception('fetching job %s (%s) failed', job.name, job.namespaced_name)
+            logger.exception(
+                'fetching job %s (%s) failed', job.name, job.namespaced_name
+            )
     elif isinstance(job_update, dict):
         job_dict = job_update
 
-    job_dict.update(
-        {
-            'name': job.namespaced_name,
-            'schedule': schedule,
-            'parent_job': parent_job,
-            'executor': 'shell',
-            'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
-            'metadata': {'cron': 'auto'},
-            'disabled': not job.enabled,
-            'executor_config': {'shell': 'true' if job.use_shell else 'false', 'command': job.command},
-            'retries': job.retries,
-        }
-    )
+    job_dict.update({
+        'name': job.namespaced_name,
+        'schedule': schedule,
+        'parent_job': parent_job,
+        'executor': 'shell',
+        'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'}
+        if settings.DKRON_JOB_LABEL
+        else {},
+        'metadata': {'cron': 'auto'},
+        'disabled': not job.enabled,
+        'executor_config': {
+            'shell': 'true' if job.use_shell else 'false',
+            'command': job.command,
+        },
+        'retries': job.retries,
+    })
     r = _post('jobs', json=job_dict)
     if r.status_code != 201:
         raise DkronException(r.status_code, r.text)
@@ -252,10 +260,14 @@ def resync_jobs() -> Iterator[tuple[str, Literal["u", "d"], Optional[str]]]:
         if not k:
             # wrong namespace
             continue
-        if settings.DKRON_JOB_LABEL and settings.DKRON_JOB_LABEL != y.get('tags', {}).get('label', ''):
+        if settings.DKRON_JOB_LABEL and settings.DKRON_JOB_LABEL != y.get(
+            'tags', {}
+        ).get('label', ''):
             # label for another agent, ignore as well, log warning
             logger.warning(
-                'job %s (%s) matches metadata but it is missing the label - maybe namespacing required?', k, y['name']
+                'job %s (%s) matches metadata but it is missing the label - maybe namespacing required?',
+                k,
+                y['name'],
             )
             continue
         previous_jobs[k] = y
@@ -294,7 +306,9 @@ except ImportError:
 
 
 def __run_async_dkron(_command, *args, **kwargs) -> tuple[str, str]:
-    arguments = base64.b64encode(json.dumps({'args': args, 'kwargs': kwargs}).encode()).decode()
+    arguments = base64.b64encode(
+        json.dumps({'args': args, 'kwargs': kwargs}).encode()
+    ).decode()
     final_command = f'python ./manage.py run_dkron_async_command {_command} {arguments}'
 
     name = f'tmp_{_command}_{time.time():.0f}'
@@ -313,7 +327,9 @@ def __run_async_dkron(_command, *args, **kwargs) -> tuple[str, str]:
             'name': add_namespace(name),
             'schedule': schedule,
             'executor': 'shell',
-            'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
+            'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'}
+            if settings.DKRON_JOB_LABEL
+            else {},
             'metadata': {'temp': 'true'},
             'disabled': False,
             'executor_config': {'command': final_command},
@@ -337,3 +353,83 @@ def run_async(_command, *args, **kwargs) -> Union[tuple[str, str], str]:
     except requests.ConnectionError:
         # if dkron not available, use after_response
         return __run_async.after_response(_command, *args, **kwargs)
+
+
+def dkron_to_sentry_schedule(job: Optional[models.Job]):
+    # https://dkron.io/docs/usage/cron-spec/
+    # https://docs.sentry.io/product/crons/getting-started/http/
+    if not job or not job.enabled or not job.schedule or job.schedule == '@manually':
+        return {"type": "crontab", "value": "0 5 31 2 *"}  # never executes
+
+    if job.schedule.startswith('@parent '):
+        parent_job = models.Job.objects.filter(name=job.schedule[8:]).first()
+        return dkron_to_sentry_schedule(parent_job)
+
+    if job.schedule in ('@yearly', '@annually'):
+        return {"type": "crontab", "value": "0 0 1 1 *"}
+
+    if job.schedule == '@monthly':
+        return {"type": "crontab", "value": "0 0 1 * *"}
+
+    if job.schedule == '@weekly':
+        return {"type": "crontab", "value": "0 0 * * 0"}
+
+    if job.schedule in ('@daily', '@midnight'):
+        return {"type": "crontab", "value": "0 0 * * *"}
+
+    if job.schedule == '@hourly':
+        return {"type": "crontab", "value": "0 * * * *"}
+
+    if job.schedule == '@minutely':
+        return {"type": "crontab", "value": "* * * * *"}
+
+    if job.schedule.startswith("@every "):
+        # FIXME: not the full spec of https://pkg.go.dev/time#ParseDuration
+        match = re.match(r"@every (\d+)([smh])", job.schedule)
+        duration = match.group(1)
+        unit = match.group(2)
+        if unit == "s":
+            unit = "second"
+        elif unit == "m":
+            unit = "minute"
+        elif unit == "h":
+            unit = "hour"
+
+        return {"type": "interval", "value": duration, "unit": unit}
+
+    schedule_without_seconds = " ".join(job.schedule.split(" ")[1:])
+    return {"type": "crontab", "value": schedule_without_seconds}
+
+
+def get_timezone():
+    try:
+        import tzlocal
+
+        return tzlocal.get_localzone().zone
+    except ImportError:
+        return "Europe/Dublin"
+
+
+def send_sentry_monitor(job: models.Job, status: Literal["in_progress", "ok", "error"]):
+    if not settings.SENTRY_CRON_URL:
+        return False
+
+    try:
+        req = requests.post(
+            settings.SENTRY_CRON_URL.replace("<monitor_slug>", job.name),
+            json={
+                "monitor_config": {
+                    "schedule": dkron_to_sentry_schedule(o),
+                    "checkin_margin": 5,  # TODO: make this configurable
+                    "max_runtime": 30,  # TODO: make this configurable
+                    "timezone": get_timezone(),
+                },
+                "status": "in_progress",
+            },
+        )
+        req.raise_for_status()
+        return True
+    except Exception:
+        logger.exception("Failed to send monitor config to Sentry")
+
+    return False
