@@ -603,7 +603,9 @@ class Test(TestCase):
                 exec_args = exec_mock.call_args_list[0][0][1]
                 self.assertIn('--webhook-url', exec_args)
                 opt_i = exec_args.index('--webhook-url')
-                self.assertEqual(exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload'])
+                self.assertEqual(
+                    exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload']
+                )
 
             exec_mock.reset_mock()
             with override_settings(DKRON_VERSION='3.2.1'):
