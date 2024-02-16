@@ -595,13 +595,13 @@ class Test(TestCase):
             f.write(b'1')
 
         with mock.patch('tempfile.mkdtemp', return_value=tmp):
-            # using default version of 3.2.7
-            management.call_command('run_dkron', stdout=out, stderr=err)
-            self.assertEqual(exec_mock.call_count, 1)
-            exec_args = exec_mock.call_args_list[0][0][1]
-            self.assertIn('--webhook-url', exec_args)
-            opt_i = exec_args.index('--webhook-url')
-            self.assertEqual(exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload'])
+            with override_settings(DKRON_VERSION='3.1.10'):
+                management.call_command('run_dkron', stdout=out, stderr=err)
+                self.assertEqual(exec_mock.call_count, 1)
+                exec_args = exec_mock.call_args_list[0][0][1]
+                self.assertIn('--webhook-url', exec_args)
+                opt_i = exec_args.index('--webhook-url')
+                self.assertEqual(exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload'])
 
             exec_mock.reset_mock()
             with override_settings(DKRON_VERSION='3.2.1'):
