@@ -125,7 +125,7 @@ DKRON_TOKEN = 'test'
 DKRON_URL = 'http://localhost:8888/'
 DKRON_JOB_LABEL = 'testapp'
 DKRON_SERVER = True
-# to switch a different version than default (currently 3.1.10)
+# to switch a different version than default
 # DKRON_VERSION= '3.2.2'
 
 # DKRON_PATH is meant to be setup in an nginx location before the main app, so it can re-use app authentication (and authz) to access dkron (which has no authentication)

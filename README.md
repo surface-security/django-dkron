@@ -25,7 +25,7 @@ The following app settings are available for customization (from [dkron/apps.py]
 | DKRON_URL | `http://localhost:8888` | dkron server URL |
 | DKRON_PATH |  | used to build browser-visible URLs to dkron - can be a full URL if no reverse proxy is being used |
 | DKRON_BIN_DIR | | directory to store and execute the dkron binaries, defaults to temporary one - hardly optimal, do set one up! |
-| DKRON_VERSION | `3.1.10` | dkron version to (download and) use |
+| DKRON_VERSION | `3.2.7` | dkron version to (download and) use |
 | DKRON_DOWNLOAD_URL_TEMPLATE | `https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_{machine}.tar.gz` | can be changed in case a dkron fork is meant to be used |
 | DKRON_SERVER | `False` | always `run_dkron` in server mode |
 | DKRON_TAGS | `[]` | tags for the agent/server created by `run_dkron` - `label=` tag is not required as it is added by `DKRON_JOB_LABEL` |
@@ -35,8 +35,10 @@ The following app settings are available for customization (from [dkron/apps.py]
 | DKRON_ENCRYPT |  | gossip encrypt key for `run_dkron` |
 | DKRON_API_AUTH |  | HTTP Basic auth header value, if dkron instance is protected with it (really recommended, if instance is exposed) |
 | DKRON_TOKEN |  | Token used by `run_dkron` for webhook calls into this app |
-| DKRON_WEBHOOK_URL |  | URL called by dkron webhooks to post job status to this app - passed as `--webhook-url` to dkron, so you need to map `dkron.views.webhook` in your project urls.py and this should be full URL to that route and reachable by dkron|
+| DKRON_PRE_WEBHOOK_URL |  | URL called by dkron webhooks to post job start to this app - passed as `--pre-webhook-url` to dkron, so you need to map `dkron.views.pre_webhook` in your project urls.py and this should be full URL to that route and reachable by dkron. Requires DKRON_SENTRY_CRON_URL otherwise nothing would happen. |
+| DKRON_WEBHOOK_URL |  | URL called by dkron webhooks to post job status to this app - passed as `--webhook-url` to dkron, so you need to map `dkron.views.webhook` in your project urls.py and this should be full URL to that route and reachable by dkron |
 | DKRON_NAMESPACE | | string to be prefixed to each job created by this app in dkron so the same dkron cluster can be used by different apps/instances without conflicting job names (assuming unique namespaces ^^) |
+| DKRON_SENTRY_CRON_URL | Optional Sentry URL used for monitoring jobs. Use placeholder `<monitor_slug>` in URL for job name. |
 
 Besides starting the django app (with `./manage.py runserver`, `gunicorn` or similar) also start dkron agent with `./manage.py run_dkron`:
 

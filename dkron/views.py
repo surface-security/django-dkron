@@ -24,6 +24,34 @@ def auth(request):
 
 
 @csrf_exempt
+def pre_webhook(request):
+    if settings.DKRON_TOKEN is None:
+        return http.HttpResponseNotFound()
+
+    if request.method != 'POST':
+        return http.HttpResponseBadRequest()
+
+    lines = request.body.decode().splitlines()
+    if len(lines) != 2:
+        return http.HttpResponseBadRequest()
+
+    if lines[0] != settings.DKRON_TOKEN:
+        return http.HttpResponseForbidden()
+
+    job_name = utils.trim_namespace(lines[1])
+    if not job_name:
+        return http.HttpResponseNotFound()
+
+    o = models.Job.objects.filter(name=job_name).first()
+    if o is None:
+        return http.HttpResponseNotFound()
+
+    utils.send_sentry_monitor(o, "in_progress")
+
+    return http.HttpResponse()
+
+
+@csrf_exempt
 def webhook(request):
     if settings.DKRON_TOKEN is None:
         return http.HttpResponseNotFound()
@@ -49,6 +77,9 @@ def webhook(request):
     o.last_run_success = lines[2] == 'true'
     o.last_run_date = timezone.now()
     o.save()
+
+    utils.send_sentry_monitor(o, "ok" if o.last_run_success else "error")
+
     if not o.last_run_success and o.notify_on_error:
         notify(
             'dkron_failed_job',
