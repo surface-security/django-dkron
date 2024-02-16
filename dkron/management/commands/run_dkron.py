@@ -84,20 +84,18 @@ class Command(LogBaseCommand):
         if settings.DKRON_WORKDIR:
             os.chdir(settings.DKRON_WORKDIR)
         if settings.DKRON_PRE_WEBHOOK_URL and settings.DKRON_TOKEN and settings.DKRON_SENTRY_CRON_URL:
-            flag_name = '--pre-webhook-url' if utils.dkron_binary_version() < (3, 2, 0) else '--pre-webhook-endpoint'
             args.extend(
                 [
-                    flag_name,
+                    '--pre-webhook-endpoint',
                     settings.DKRON_PRE_WEBHOOK_URL,
                     '--pre-webhook-payload',
                     f'{settings.DKRON_TOKEN}\n{{{{ .JobName }}}}',
                 ]
             )
         if settings.DKRON_WEBHOOK_URL and settings.DKRON_TOKEN:
-            flag_name = '--webhook-url' if utils.dkron_binary_version() < (3, 2, 0) else '--webhook-endpoint'
             args.extend(
                 [
-                    flag_name,
+                    '--webhook-endpoint',
                     settings.DKRON_WEBHOOK_URL,
                     '--webhook-payload',
                     f'{settings.DKRON_TOKEN}\n{{{{ .JobName }}}}\n{{{{ .Success }}}}',
