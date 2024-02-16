@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import platform
 import time
-from typing import Iterator, Literal, Optional, Union
+from typing import Any, Iterator, Literal, Optional, Union
 import requests
 from functools import lru_cache
 import re
@@ -339,7 +339,7 @@ def run_async(_command, *args, **kwargs) -> Union[tuple[str, str], str]:
         return __run_async.after_response(_command, *args, **kwargs)
 
 
-def dkron_to_sentry_schedule(job: Optional[models.Job]):
+def dkron_to_sentry_schedule(job: Optional[models.Job]) -> dict[str, Any]:
     # https://dkron.io/docs/usage/cron-spec/
     # https://docs.sentry.io/product/crons/getting-started/http/
     if not job or not job.enabled or not job.schedule or job.schedule == '@manually':
@@ -370,7 +370,7 @@ def dkron_to_sentry_schedule(job: Optional[models.Job]):
     if job.schedule.startswith("@every "):
         # FIXME: not the full spec of https://pkg.go.dev/time#ParseDuration
         match = re.match(r"@every (\d+)([smh])", job.schedule)
-        duration = match.group(1)
+        duration = int(match.group(1))
         unit = match.group(2)
         if unit == "s":
             unit = "second"
@@ -385,7 +385,7 @@ def dkron_to_sentry_schedule(job: Optional[models.Job]):
     return {"type": "crontab", "value": schedule_without_seconds}
 
 
-def get_timezone():
+def get_timezone() -> str:
     try:
         import tzlocal
 
@@ -394,7 +394,7 @@ def get_timezone():
         return "Europe/Dublin"
 
 
-def send_sentry_monitor(job: models.Job, status: Literal["in_progress", "ok", "error"]):
+def send_sentry_monitor(job: models.Job, status: Literal["in_progress", "ok", "error"]) -> bool:
     if not settings.DKRON_SENTRY_CRON_URL:
         return False
 
