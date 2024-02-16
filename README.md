@@ -25,7 +25,7 @@ The following app settings are available for customization (from [dkron/apps.py]
 | DKRON_URL | `http://localhost:8888` | dkron server URL |
 | DKRON_PATH |  | used to build browser-visible URLs to dkron - can be a full URL if no reverse proxy is being used |
 | DKRON_BIN_DIR | | directory to store and execute the dkron binaries, defaults to temporary one - hardly optimal, do set one up! |
-| DKRON_VERSION | `3.1.10` | dkron version to (download and) use |
+| DKRON_VERSION | `3.2.7` | dkron version to (download and) use |
 | DKRON_DOWNLOAD_URL_TEMPLATE | `https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_{machine}.tar.gz` | can be changed in case a dkron fork is meant to be used |
 | DKRON_SERVER | `False` | always `run_dkron` in server mode |
 | DKRON_TAGS | `[]` | tags for the agent/server created by `run_dkron` - `label=` tag is not required as it is added by `DKRON_JOB_LABEL` |
