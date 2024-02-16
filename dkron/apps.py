@@ -10,7 +10,7 @@ APP_SETTINGS = dict(
     # directory to store and execute the dkron binaries, defaults to temporary one - hardly optimal, do set one up!
     BIN_DIR=None,
     # dkron version to (download and) use
-    VERSION='3.1.10',
+    VERSION='3.2.7',
     # can be changed in case a dkron fork is meant to be used
     DOWNLOAD_URL_TEMPLATE='https://github.com/distribworks/dkron/releases/download/v{version}/dkron_{version}_{system}_{machine}.tar.gz',
     # always `run_dkron` in server mode

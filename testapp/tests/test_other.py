@@ -12,7 +12,7 @@ class Test(TestCase):
     @mock.patch('platform.machine')
     @mock.patch('platform.system')
     @mock.patch('requests.get')
-    @override_settings(DKRON_BIN_DIR=None)
+    @override_settings(DKRON_BIN_DIR=None, DKRON_VERSION='3.1.10')
     def test_run_dkron_download(self, req_mock, sys_mock, mach_mock):
         from dkron.management.commands import run_dkron
         from io import BytesIO

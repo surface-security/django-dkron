@@ -595,7 +595,7 @@ class Test(TestCase):
             f.write(b'1')
 
         with mock.patch('tempfile.mkdtemp', return_value=tmp):
-            # using default version of 3.1.10
+            # using default version of 3.2.7
             management.call_command('run_dkron', stdout=out, stderr=err)
             self.assertEqual(exec_mock.call_count, 1)
             exec_args = exec_mock.call_args_list[0][0][1]
