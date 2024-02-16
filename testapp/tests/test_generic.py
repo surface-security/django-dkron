@@ -466,11 +466,13 @@ class Test(TestCase):
             self.assertEqual(x, expected_return)
 
             mp.reset_mock()
+
             expected_mock_call.kwargs['json']['schedule'] = '@at 2023-02-07T00:00:05+00:00'
             expected_mock_call.kwargs['params'] = {}
             type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
             utils.dkron_binary_version.cache_clear()
-            x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
+            with override_settings(DKRON_VERSION='3.1.10'):
+                x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
             mp.assert_has_calls([expected_mock_call])
             self.assertEqual(x, expected_return)
 
