@@ -12,7 +12,7 @@ class Test(TestCase):
     @mock.patch('platform.machine')
     @mock.patch('platform.system')
     @mock.patch('requests.get')
-    @override_settings(DKRON_BIN_DIR=None, DKRON_VERSION='3.1.10')
+    @override_settings(DKRON_BIN_DIR=None, DKRON_VERSION='3.2.7')
     def test_run_dkron_download(self, req_mock, sys_mock, mach_mock):
         from dkron.management.commands import run_dkron
         from io import BytesIO
@@ -38,23 +38,23 @@ class Test(TestCase):
         _check(
             'darwin',
             'x86_64',
-            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_darwin_amd64.tar.gz',
+            'https://github.com/distribworks/dkron/releases/download/v3.2.7/dkron_3.2.7_darwin_amd64.tar.gz',
         )
         _check(
             'windows',
             'AMD64',
-            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_windows_amd64.tar.gz',
+            'https://github.com/distribworks/dkron/releases/download/v3.2.7/dkron_3.2.7_windows_amd64.tar.gz',
         )
         _check(
             'Linux',
             'aarch64',
-            'https://github.com/distribworks/dkron/releases/download/v3.1.10/dkron_3.1.10_linux_arm64.tar.gz',
+            'https://github.com/distribworks/dkron/releases/download/v3.2.7/dkron_3.2.7_linux_arm64.tar.gz',
         )
 
     def test_utils_dkron_version_tuple(self):
         utils.dkron_binary_version.cache_clear()
-        with override_settings(DKRON_VERSION='3.1.1'):
-            self.assertEqual(utils.dkron_binary_version(), (3, 1, 1))
+        with override_settings(DKRON_VERSION='3.2.7'):
+            self.assertEqual(utils.dkron_binary_version(), (3, 2, 7))
 
         utils.dkron_binary_version.cache_clear()
         with override_settings(DKRON_VERSION='4.1.1-fork1'):

@@ -11,7 +11,6 @@ import base64
 
 from django.conf import settings
 from django.core.management import call_command
-from django.utils import timezone
 
 from dkron import models
 
@@ -299,26 +298,18 @@ def __run_async_dkron(_command, *args, **kwargs) -> tuple[str, str]:
 
     name = f'tmp_{_command}_{time.time():.0f}'
 
-    if dkron_binary_version() >= (3, 2, 2):
-        # runoncreate was turned into asynchronous in https://github.com/distribworks/dkron/pull/1269
-        schedule = '@manually'
-        params = {'runoncreate': 'true'}
-    else:
-        schedule = f'@at {(timezone.now() + timezone.timedelta(seconds=5)).isoformat()}'
-        params = {}
-
     r = _post(
         'jobs',
         json={
             'name': add_namespace(name),
-            'schedule': schedule,
+            'schedule': '@manually',
             'executor': 'shell',
             'tags': {'label': f'{settings.DKRON_JOB_LABEL}:1'} if settings.DKRON_JOB_LABEL else {},
             'metadata': {'temp': 'true'},
             'disabled': False,
             'executor_config': {'command': final_command},
         },
-        params=params,
+        params={'runoncreate': 'true'},
     )
 
     if r.status_code != 201:

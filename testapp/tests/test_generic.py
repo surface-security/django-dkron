@@ -460,19 +460,7 @@ class Test(TestCase):
         # https://docs.python.org/3/library/unittest.mock.html#raising-exceptions-on-attribute-access
         type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
         with mock.patch('django.utils.timezone.now', return_value=timezone.make_aware(timezone.datetime(2023, 2, 7))):
-            with override_settings(DKRON_VERSION='3.2.2'):
-                x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
-            mp.assert_has_calls([expected_mock_call])
-            self.assertEqual(x, expected_return)
-
-            mp.reset_mock()
-
-            expected_mock_call.kwargs['json']['schedule'] = '@at 2023-02-07T00:00:05+00:00'
-            expected_mock_call.kwargs['params'] = {}
-            type(mpp).status_code = mock.PropertyMock(side_effect=[201, 200])
-            utils.dkron_binary_version.cache_clear()
-            with override_settings(DKRON_VERSION='3.1.10'):
-                x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
+            x = utils.run_async('somecommand', 'arg1', kwarg='value', enable=True)
             mp.assert_has_calls([expected_mock_call])
             self.assertEqual(x, expected_return)
 
@@ -597,27 +585,15 @@ class Test(TestCase):
             f.write(b'1')
 
         with mock.patch('tempfile.mkdtemp', return_value=tmp):
-            with override_settings(DKRON_VERSION='3.1.10'):
-                management.call_command('run_dkron', stdout=out, stderr=err)
-                self.assertEqual(exec_mock.call_count, 1)
-                exec_args = exec_mock.call_args_list[0][0][1]
-                self.assertIn('--webhook-url', exec_args)
-                opt_i = exec_args.index('--webhook-url')
-                self.assertEqual(
-                    exec_args[opt_i : opt_i + 3], ['--webhook-url', 'https://whatever', '--webhook-payload']
-                )
-
-            exec_mock.reset_mock()
-            with override_settings(DKRON_VERSION='3.2.1'):
-                utils.dkron_binary_version.cache_clear()
-                management.call_command('run_dkron', stdout=out, stderr=err)
-                self.assertEqual(exec_mock.call_count, 1)
-                exec_args = exec_mock.call_args_list[0][0][1]
-                self.assertIn('--webhook-endpoint', exec_args)
-                opt_i = exec_args.index('--webhook-endpoint')
-                self.assertEqual(
-                    exec_args[opt_i : opt_i + 3], ['--webhook-endpoint', 'https://whatever', '--webhook-payload']
-                )
+            utils.dkron_binary_version.cache_clear()
+            management.call_command('run_dkron', stdout=out, stderr=err)
+            self.assertEqual(exec_mock.call_count, 1)
+            exec_args = exec_mock.call_args_list[0][0][1]
+            self.assertIn('--webhook-endpoint', exec_args)
+            opt_i = exec_args.index('--webhook-endpoint')
+            self.assertEqual(
+                exec_args[opt_i : opt_i + 3], ['--webhook-endpoint', 'https://whatever', '--webhook-payload']
+            )
 
     @mock.patch('requests.request')
     def test_proxy_auth(self, mp1):
