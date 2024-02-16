@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import platform
 import time
-from typing import Iterator, Literal, Optional, Union
+from typing import Any, Iterator, Literal, Optional, Union
 import requests
 from functools import lru_cache
 import re
@@ -337,3 +337,83 @@ def run_async(_command, *args, **kwargs) -> Union[tuple[str, str], str]:
     except requests.ConnectionError:
         # if dkron not available, use after_response
         return __run_async.after_response(_command, *args, **kwargs)
+
+
+def dkron_to_sentry_schedule(job: Optional[models.Job]) -> dict[str, Any]:
+    # https://dkron.io/docs/usage/cron-spec/
+    # https://docs.sentry.io/product/crons/getting-started/http/
+    if not job or not job.enabled or not job.schedule or job.schedule == '@manually':
+        return {"type": "crontab", "value": "0 5 31 2 *"}  # never executes
+
+    if job.schedule.startswith('@parent '):
+        parent_job = models.Job.objects.filter(name=job.schedule[8:]).first()
+        return dkron_to_sentry_schedule(parent_job)
+
+    if job.schedule in ('@yearly', '@annually'):
+        return {"type": "crontab", "value": "0 0 1 1 *"}
+
+    if job.schedule == '@monthly':
+        return {"type": "crontab", "value": "0 0 1 * *"}
+
+    if job.schedule == '@weekly':
+        return {"type": "crontab", "value": "0 0 * * 0"}
+
+    if job.schedule in ('@daily', '@midnight'):
+        return {"type": "crontab", "value": "0 0 * * *"}
+
+    if job.schedule == '@hourly':
+        return {"type": "crontab", "value": "0 * * * *"}
+
+    if job.schedule == '@minutely':
+        return {"type": "crontab", "value": "* * * * *"}
+
+    if job.schedule.startswith("@every "):
+        # FIXME: not the full spec of https://pkg.go.dev/time#ParseDuration
+        match = re.match(r"@every (\d+)([smh])", job.schedule)
+        duration = int(match.group(1))
+        unit = match.group(2)
+        if unit == "s":
+            unit = "second"
+        elif unit == "m":
+            unit = "minute"
+        elif unit == "h":
+            unit = "hour"
+
+        return {"type": "interval", "value": duration, "unit": unit}
+
+    schedule_without_seconds = " ".join(job.schedule.split(" ")[1:])
+    return {"type": "crontab", "value": schedule_without_seconds}
+
+
+def get_timezone() -> str:
+    try:
+        import tzlocal
+
+        return tzlocal.get_localzone().zone
+    except ImportError:
+        return "Europe/Dublin"
+
+
+def send_sentry_monitor(job: models.Job, status: Literal["in_progress", "ok", "error"]) -> bool:
+    if not settings.DKRON_SENTRY_CRON_URL:
+        return False
+
+    try:
+        req = requests.post(
+            settings.DKRON_SENTRY_CRON_URL.replace("<monitor_slug>", job.name),
+            json={
+                "monitor_config": {
+                    "schedule": dkron_to_sentry_schedule(job),
+                    "checkin_margin": 5,  # TODO: make this configurable
+                    "max_runtime": 30,  # TODO: make this configurable
+                    "timezone": get_timezone(),
+                },
+                "status": status,
+            },
+        )
+        req.raise_for_status()
+        return True
+    except Exception:
+        logger.exception("Failed to send monitor config to Sentry")
+
+    return False
