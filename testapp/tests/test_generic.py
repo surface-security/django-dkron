@@ -182,12 +182,18 @@ class Test(TestCase):
             self.assertEqual(exc.exception.message, 'Whatever')
 
     def test_job_form(self, job_prefix=''):
-        form_data = {
-            'name':'job1', 'schedule': '* 0 1 * * *', 'command': 'echo test'
-        }
+        form_data = {'name': 'job1', 'schedule': '* 0 1 * * *', 'command': 'echo test'}
         form = JobForm(data=form_data)
         self.assertEqual(form.is_valid(), False)
-        self.assertEquals(form.errors['schedule'], ["Job schedule cannot start with * as this will schedule a job to start every second and can have unintended consequences."])
+        self.assertEquals(
+            form.errors['schedule'],
+            [
+                "Job schedule cannot start with * as this will schedule a job to start every second and can have unintended consequences."
+            ],
+        )
+        form_data = {'name': 'job1', 'schedule': '0 0 1 * * *', 'command': 'echo test', "retries": 0}
+        form = JobForm(data=form_data)
+        self.assertEqual(form.is_valid(), True)
 
     def test_delete_job(self, job_prefix=''):
         j = models.Job.objects.create(name='job1')
