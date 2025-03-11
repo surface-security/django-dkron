@@ -182,7 +182,7 @@ class Test(TestCase):
             self.assertEqual(exc.exception.message, 'Whatever')
 
     def test_job_form(self, job_prefix=''):
-        form_data = {'name': 'job1', 'schedule': '* 0 1 * * *', 'command': 'echo test'}
+        form_data = {'name': 'job1', 'schedule': '* 0 1 * * *', 'command': 'echo test', "retries": 0}
         form = JobForm(data=form_data)
         self.assertEqual(form.is_valid(), False)
         self.assertEquals(
