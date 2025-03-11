@@ -8,6 +8,7 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.html import format_html
 from dkron import models, utils
+from dkron.forms import JobForm
 
 
 class JobAdminForm(forms.ModelForm):
@@ -53,6 +54,7 @@ class JobAdmin(admin.ModelAdmin):
     search_fields = ('name', 'schedule', 'command', 'description')
     list_filter = ('name', 'schedule', 'enabled', 'last_run_success', 'notify_on_error')
     actions = ['disable_jobs', 'enable_jobs']
+    form = JobForm
 
     def has_dashboard_permission(self, request):
         return request.user.has_perm('dkron.can_use_dashboard')
